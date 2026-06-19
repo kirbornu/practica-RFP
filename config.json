@@ -1,0 +1,13 @@
+{
+  "routing_file": "/home/deployuser/practica/wpad_.dat",
+  "proxies": [
+    {
+      "name": "first",
+      "address": "192.0.2.11:3128"
+    },
+    {
+      "name": "second",
+      "address": "192.0.2.11:10808"
+    }
+  ]
+}
