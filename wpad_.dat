@@ -2,15 +2,9 @@ function FindProxyForURL(url, host)
 {
         $Proxy = "PROXY proxy.rfpgroup.ru:8090";
 
-
+    //Если Вы пришли сюда отредактировать правила, то лучше не надо - воспользуйтесь редактором. Иначе будьте крайне осторожны
 	
     //PROXY
-
-
-    if (shExpMatch(host, "12345.com") || shExpMatch(host, "*.12345.com")) {
-        return "PROXY 172.28.36.2:1082";
-    }
-
 
     if (shExpMatch(host, "124.com") || shExpMatch(host, "*.124.com")) {
         return "PROXY 172.28.36.2:3128";
@@ -30,11 +24,7 @@ function FindProxyForURL(url, host)
 	if (shExpMatch(host, "octocaptcha.com") || shExpMatch(host, "*.octocaptcha.com")) {
         return "PROXY 172.28.0.100:3128";
     }	
-	
-	if (shExpMatch(host, "octocaptcha.com") || shExpMatch(host, "octocaptcha.com")) {
-        return "PROXY 172.28.0.100:3128";
-    }
-	
+
 	if (shExpMatch(host, "arkoselabs.com") || shExpMatch(host, "*.arkoselabs.com")) {
         return "PROXY 172.28.0.100:3128";
     }
