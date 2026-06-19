@@ -94,7 +94,7 @@ def insert_proxy_rule(content, domain, proxy_address):
 
 
 def insert_direct_rule(content, domain):
-    rule = f'\n\tif (shExpMatch(url, "*//{ domain }/*")) {{return "DIRECT";}}'
+    rule = f'\n\tif (shExpMatch(url, "*//{domain}/*")) {{return "DIRECT";}}'
     match = re.search(r'\n(\s*)//DIRECT', content)
     if match:
         pos = match.end()
