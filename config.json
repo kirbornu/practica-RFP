@@ -1,0 +1,13 @@
+{
+  "routing_file": "/home/vboxuser/practica/wpad_.dat",
+  "proxies": [
+    {
+      "name": "first",
+      "address": "172.28.36.2:3128"
+    },
+    {
+      "name": "second",
+      "address": "172.28.36.2:10808"
+    }
+  ]
+}

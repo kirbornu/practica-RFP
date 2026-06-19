@@ -1,0 +1,100 @@
+function FindProxyForURL(url, host)
+{
+        $Proxy = "PROXY proxy.rfpgroup.ru:8090";
+
+
+	
+    //PROXY
+
+
+    if (shExpMatch(host, "12345.com") || shExpMatch(host, "*.12345.com")) {
+        return "PROXY 172.28.36.2:1082";
+    }
+
+
+    if (shExpMatch(host, "124.com") || shExpMatch(host, "*.124.com")) {
+        return "PROXY 172.28.36.2:3128";
+    }
+
+    if (shExpMatch(host, "hennge.com") || shExpMatch(host, "*.hennge.com")) {
+        return "PROXY 172.28.36.2:10808";
+    }
+
+    if (shExpMatch(host, "whatsapp.com") || shExpMatch(host, "*.whatsapp.com")) {
+        return "PROXY 172.28.0.100:3128";
+    }	
+	if (shExpMatch(host, "whatsapp.net") || shExpMatch(host, "*.whatsapp.net")) {
+        return "PROXY 172.28.0.100:3128";
+    }	
+	
+	if (shExpMatch(host, "octocaptcha.com") || shExpMatch(host, "*.octocaptcha.com")) {
+        return "PROXY 172.28.0.100:3128";
+    }	
+	
+	if (shExpMatch(host, "octocaptcha.com") || shExpMatch(host, "octocaptcha.com")) {
+        return "PROXY 172.28.0.100:3128";
+    }
+	
+	if (shExpMatch(host, "arkoselabs.com") || shExpMatch(host, "*.arkoselabs.com")) {
+        return "PROXY 172.28.0.100:3128";
+    }
+	
+	if (shExpMatch(host, "grammarly.com") || shExpMatch(host, "*.grammarly.com")) {
+        return "PROXY 172.28.0.100:3128";
+    }
+	
+	if (shExpMatch(host, "marinetraffic.com") || shExpMatch(host, "*.marinetraffic.com")) {
+        return "PROXY 172.28.0.100:3128";
+    }
+	
+	if (shExpMatch(host, "telegram.org") || shExpMatch(host, "*.telegram.org")) {
+        return "PROXY 172.28.0.100:3128";
+    }
+
+    //DIRECT
+    if (shExpMatch(url, "*//123.com/*")) {return "DIRECT";}
+	
+
+//		alert("url = " + url + " *** host = " + host + " *** Resolved IP = " + dnsResolve(host));
+
+
+
+    //constants
+
+        if (shExpMatch(url, "localhost")) {return "DIRECT";}
+		if (shExpMatch(url, "*//dev.rfpgorup.ru/*")) {return "DIRECT";}
+        if (shExpMatch(url, "*//amurship.ru/*")) {return $Proxy;}
+        if (shExpMatch(url, "*//www.amurship.ru/*")) {return $Proxy;}
+        if (shExpMatch(url, "*//rfpgroup.ru/*")) {return $Proxy;}
+        if (shExpMatch(url, "*//www.rfpgroup.ru/*")) {return $Proxy;}
+        if (shExpMatch(url, "*.amurship.ru/*")) {return "DIRECT";}
+        if (shExpMatch(url, "*.rfpgroup.ru/*")) {return "DIRECT";}  
+        if (shExpMatch(url, "*//rfp04-srv041.rfpgroup.ru/*")) {return "DIRECT";}
+		if (shExpMatch(host, "lk-b2b.mts.ru/*")) {return "DIRECT";}	
+		if (shExpMatch(url, "*//cargolk.rzd.ru/*")) {return "DIRECT";} 
+		if (shExpMatch(url, "*//lk.exportcenter.ru/*")) {return "DIRECT";} 
+		if (shExpMatch(url, "*//cm.sftcomp.ru*")) {return "DIRECT";}
+		
+        //Nwtworks
+        if (isInNet(host, "10.0.0.0", "255.0.0.0")) {return "DIRECT";}
+        if (isInNet(host, "172.16.0.0", "255.240.0.0")) {return "DIRECT";}
+        if (isInNet(host, "192.168.0.0", "255.255.0.0")) {return "DIRECT";}
+
+	//ALK
+	if (isInNet(host, "172.4.12.0", "255.255.254.0")) {return "DIRECT";}
+	if (isInNet(host, "172.4.0.0", "255.255.255.0")) {return "DIRECT";}
+	if (isInNet(host, "172.4.1.0", "255.255.255.0")) {return "DIRECT";}
+	if (isInNet(host, "172.4.3.0", "255.255.255.0")) {return "DIRECT";}
+	if (isInNet(host, "172.4.4.0", "255.255.255.0")) {return "DIRECT";}
+	if (isInNet(host, "172.4.5.0", "255.255.255.0")) {return "DIRECT";}
+	if (isInNet(host, "172.4.8.0", "255.255.255.0")) {return "DIRECT";}
+	if (isInNet(host, "172.4.10.0", "255.255.255.0")) {return "DIRECT";}
+
+        //localhost
+        if (shExpMatch(host, "127.0.0.1" )) {return "DIRECT";}
+        if (shExpMatch(host, "*/localhost*" )) {return "DIRECT";}
+
+	alert("Return" + $Proxy);
+
+return $Proxy;
+}
