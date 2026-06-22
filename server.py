@@ -34,23 +34,83 @@ def get_existing_domains(content):
 
 
 def parse_rules(content):
-    """Парсит правила shExpMatch из редактируемой части файла."""
     rules = []
-    # PROXY: if (shExpMatch(host, "domain") || ...) { return "PROXY ..."; }
-    for m in re.finditer(
-        r'if\s*\(shExpMatch\(host,\s*["\']([^"\'*][^"\']*)["\'][^)]*\)\s*(?:\|\|[^)]*\))?\s*\)\s*\{[^}]*return\s*["\']PROXY\s+([\w\.\-]+:\d+)["\'];',
-        content
-    ):
-        rules.append({"domain": m.group(1), "type": "PROXY", "proxy": m.group(2)})
-
-    # DIRECT: захватываем весь паттерн целиком (url или host)
-    for m in re.finditer(
-        r'if\s*\(shExpMatch\((?:url|host),\s*["\']([^"\']+)["\']\s*\)\s*\)\s*\{return\s*["\']DIRECT["\'];',
-        content
-    ):
-        rules.append({"domain": m.group(1), "type": "DIRECT", "proxy": None})
-
+    
+    # Находим все if-блоки — ищем сбалансированные скобки
+    i = 0
+    while i < len(content):
+        m = re.search(r'\bif\s*\(', content[i:])
+        if not m:
+            break
+        
+        start = i + m.start()
+        # Находим закрывающую ) условия — считаем вложенность
+        depth = 0
+        j = i + m.end() - 1  # позиция открывающей (
+        while j < len(content):
+            if content[j] == '(':
+                depth += 1
+            elif content[j] == ')':
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        
+        condition = content[start:j+1]
+        
+        # Находим тело { ... }
+        k = j + 1
+        while k < len(content) and content[k] in ' \t\n':
+            k += 1
+        
+        if k < len(content) and content[k] == '{':
+            depth = 0
+            body_start = k
+            while k < len(content):
+                if content[k] == '{':
+                    depth += 1
+                elif content[k] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        break
+                k += 1
+            body = content[body_start:k+1]
+        else:
+            i = start + 1
+            continue
+        
+        rule = _parse_if_block(condition, body)
+        if rule:
+            rules.append(rule)
+        
+        i = k + 1
+    
     return rules
+
+
+def _parse_if_block(condition, body):
+    # Определяем тип по return в теле
+    proxy_m = re.search(r'return\s*["\']PROXY\s+([\w.\-]+:\d+)["\']', body)
+    direct_m = re.search(r'return\s*["\']DIRECT["\']', body)
+    
+    if not proxy_m and not direct_m:
+        return None
+    
+    # Извлекаем домен из условия — берём первый shExpMatch(host, ...)
+    domain_m = re.search(r'shExpMatch\(\s*host\s*,\s*["\']([^"\'*][^"\']*)["\']', condition)
+    if not domain_m:
+        return None
+    
+    domain = domain_m.group(1)
+    
+    if proxy_m:
+        return {"domain": domain, "type": "PROXY", "proxy": proxy_m.group(1)}
+    else:
+        # Для DIRECT берём полный паттерн — может быть url или host
+        pattern_m = re.search(r'shExpMatch\(\s*(?:url|host)\s*,\s*["\']([^"\']+)["\']', condition)
+        pat = pattern_m.group(1) if pattern_m else domain
+        return {"domain": pat, "type": "DIRECT", "proxy": None}
+
 
 
 def delete_proxy_rule(content, domain):
