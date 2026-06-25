@@ -6,7 +6,8 @@ from flask import Flask, request, jsonify, send_from_directory
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+# CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
+CONFIG_FILE = os.environ.get("CONFIG_FILE", "config.json")
 
 
 def load_config():
