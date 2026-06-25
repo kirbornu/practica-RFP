@@ -1,5 +1,5 @@
 {
-  "routing_file": "/home/deployuser/practica/wpad_.dat",
+  "routing_file": "",
   "proxies": [
     {
       "name": "first",
