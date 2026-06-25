@@ -33,21 +33,25 @@ def get_existing_domains(content):
     return set(re.findall(r'shExpMatch\((?:host|url),\s*["\']([^"\'*][^"\']*)["\']', content))
 
 
-def parse_rules(content):
-    rules = []
-    
-    # Находим все if-блоки — ищем сбалансированные скобки
+def _scan_if_blocks(content):
+    """Идёт по тексту и выдаёт (start, end, condition, body) для каждого if(...){...}.
+
+    start — позиция 'if', end — позиция сразу после закрывающей '}'.
+    Скобки и фигурные скобки считаются честно, по балансу вложенности —
+    поэтому одинаково работает и для однострочных, и для многострочных блоков.
+    """
     i = 0
-    while i < len(content):
+    n = len(content)
+    while i < n:
         m = re.search(r'\bif\s*\(', content[i:])
         if not m:
             break
-        
+
         start = i + m.start()
         # Находим закрывающую ) условия — считаем вложенность
         depth = 0
         j = i + m.end() - 1  # позиция открывающей (
-        while j < len(content):
+        while j < n:
             if content[j] == '(':
                 depth += 1
             elif content[j] == ')':
@@ -55,18 +59,20 @@ def parse_rules(content):
                 if depth == 0:
                     break
             j += 1
-        
-        condition = content[start:j+1]
-        
+        if j >= n:
+            break
+
+        condition = content[start:j + 1]
+
         # Находим тело { ... }
         k = j + 1
-        while k < len(content) and content[k] in ' \t\n':
+        while k < n and content[k] in ' \t\n':
             k += 1
-        
-        if k < len(content) and content[k] == '{':
+
+        if k < n and content[k] == '{':
             depth = 0
             body_start = k
-            while k < len(content):
+            while k < n:
                 if content[k] == '{':
                     depth += 1
                 elif content[k] == '}':
@@ -74,17 +80,22 @@ def parse_rules(content):
                     if depth == 0:
                         break
                 k += 1
-            body = content[body_start:k+1]
+            body = content[body_start:k + 1]
+            end = k + 1
         else:
             i = start + 1
             continue
-        
+
+        yield start, end, condition, body
+        i = end
+
+
+def parse_rules(content):
+    rules = []
+    for _, _, condition, body in _scan_if_blocks(content):
         rule = _parse_if_block(condition, body)
         if rule:
             rules.append(rule)
-        
-        i = k + 1
-    
     return rules
 
 
@@ -92,44 +103,51 @@ def _parse_if_block(condition, body):
     # Определяем тип по return в теле
     proxy_m = re.search(r'return\s*["\']PROXY\s+([\w.\-]+:\d+)["\']', body)
     direct_m = re.search(r'return\s*["\']DIRECT["\']', body)
-    
-    if not proxy_m and not direct_m:
-        return None
-    
-    # Извлекаем домен из условия — берём первый shExpMatch(host, ...)
-    domain_m = re.search(r'shExpMatch\(\s*host\s*,\s*["\']([^"\'*][^"\']*)["\']', condition)
-    if not domain_m:
-        return None
-    
-    domain = domain_m.group(1)
-    
+
     if proxy_m:
-        return {"domain": domain, "type": "PROXY", "proxy": proxy_m.group(1)}
-    else:
-        # Для DIRECT берём полный паттерн — может быть url или host
-        pattern_m = re.search(r'shExpMatch\(\s*(?:url|host)\s*,\s*["\']([^"\']+)["\']', condition)
-        pat = pattern_m.group(1) if pattern_m else domain
-        return {"domain": pat, "type": "DIRECT", "proxy": None}
+        # Для PROXY берём чистый домен — паттерн без ведущей звёздочки,
+        # чтобы не словить вторую ветку shExpMatch(host, "*.domain").
+        domain_m = re.search(
+            r'shExpMatch\(\s*(?:url|host)\s*,\s*["\']([^"\'*][^"\']*)["\']',
+            condition,
+        )
+        if not domain_m:
+            return None
+        return {"domain": domain_m.group(1), "type": "PROXY", "proxy": proxy_m.group(1)}
+
+    if direct_m:
+        # Для DIRECT берём полный паттерн целиком — ведущая звёздочка разрешена
+        # (правила вида "*//domain/*").
+        pattern_m = re.search(
+            r'shExpMatch\(\s*(?:url|host)\s*,\s*["\']([^"\']+)["\']',
+            condition,
+        )
+        if not pattern_m:
+            return None
+        return {"domain": pattern_m.group(1), "type": "DIRECT", "proxy": None}
+
+    return None
 
 
+def _remove_rule(content, predicate):
+    """Удаляет первый if-блок, для которого predicate(rule) истинно.
 
-def delete_proxy_rule(content, domain):
-    """Удаляет многострочный if-блок для PROXY по host."""
-    pattern = (
-        r'\n[ \t]*if\s*\(shExpMatch\(host,\s*["\']' + re.escape(domain) + r'["\']'
-        r'[^)]*\)\s*(?:\|\|[^)]*\))?\s*\)\s*\{[^}]*\}'
-    )
-    return re.sub(pattern, '', content)
-
-
-def delete_direct_rule(content, pattern_str):
-    """Удаляет однострочный if для DIRECT по полному паттерну."""
-    pattern = (
-        r'\n[ \t]*if\s*\(shExpMatch\((?:url|host),\s*["\']'
-        + re.escape(pattern_str)
-        + r'["\']\s*\)\s*\)\s*\{return\s*["\']DIRECT["\'];[ \t]*\}'
-    )
-    return re.sub(pattern, '', content)
+    Использует тот же честный обход скобок, что и парсер, поэтому корректно
+    вырезает и многострочные PROXY-блоки, и однострочные DIRECT.
+    Возвращает (новый_контент, удалено?).
+    """
+    for start, end, condition, body in _scan_if_blocks(content):
+        rule = _parse_if_block(condition, body)
+        if rule and predicate(rule):
+            # Поглощаем ведущие пробелы/табы и один перенос строки,
+            # чтобы не оставлять пустую строку на месте правила.
+            s = start
+            while s > 0 and content[s - 1] in ' \t':
+                s -= 1
+            if s > 0 and content[s - 1] == '\n':
+                s -= 1
+            return content[:s] + content[end:], True
+    return content, False
 
 
 def insert_proxy_rule(content, domain, proxy_address):
@@ -344,13 +362,17 @@ def delete_rule():
     editable, protected = get_editable_section(content)
 
     if rule_type == "PROXY":
-        editable_new = delete_proxy_rule(editable, domain)
+        editable_new, removed = _remove_rule(
+            editable, lambda r: r["type"] == "PROXY" and r["domain"] == domain
+        )
         label = domain
     else:
-        editable_new = delete_direct_rule(editable, pattern_str)
+        editable_new, removed = _remove_rule(
+            editable, lambda r: r["type"] == "DIRECT" and r["domain"] == pattern_str
+        )
         label = pattern_str
 
-    if editable_new == editable:
+    if not removed:
         return jsonify({"error": f"Правило не найдено: {label}"}), 404
 
     with open(path, "w", encoding="utf-8") as f:
