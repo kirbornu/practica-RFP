@@ -42,6 +42,8 @@ function FindProxyForURL(url, host)
     }
 
     //DIRECT
+	if (shExpMatch(url, "*//kto.prochitaet.tot.zdohnet.ru/*")) {return "DIRECT";}
+	if (shExpMatch(url, "*//amogus.com/*")) {return "DIRECT";}
     if (shExpMatch(url, "*//123.com/*")) {return "DIRECT";}
 	
 
