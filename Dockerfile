@@ -5,8 +5,7 @@ WORKDIR /app
 RUN pip install flask
 
 COPY server.py .
-COPY index.html . 
-COPY config.json .
+COPY index.html .
 
 EXPOSE 5000
 
