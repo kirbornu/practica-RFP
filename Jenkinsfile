@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY = "http://10.10.20.248:5000"
+        REGISTRY = "10.10.20.248:5000"
         IMAGE = "pac-editor"
     }
 
