@@ -15,3 +15,12 @@ jobs:
         
       - name: Push Image
         run: docker push 10.10.20.247:5000/prct-site:latest
+
+      - name: Deploy ebat ego v sraku
+        run: |
+          ssh vboxuser@10.10.20.253 "
+            docker pull 10.10.20.247:5000/prct-site:latest &&
+            docker stop prct-site || true &&
+            docker rm prct-site || true &&
+            docker run -d --name prct-site -p 8080:5000 10.10.20.247:5000/prct-site:latest
+          "
