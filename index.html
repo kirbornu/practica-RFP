@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>routing editor meow</title>
+  <title>routing editor</title>
   <style>
     body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; background: #fff; color: #111; }
     h2 { font-size: 15px; font-weight: 500; margin: 0 0 .75rem; }
@@ -110,44 +110,6 @@
   <div id="rules-list"><p class="empty">Нажмите «Обновить» чтобы загрузить правила из файла</p></div>
   <p class="msg" id="rules-msg"></p>
 </div>
-
-<div></div>
-
-<button onclick="toggleInfo()" style="margin-bottom: 1.25rem;">Справка</button>
-
-<div id="info" class="section" style="display:none;">
-    <h2>Справка по ручному редактированию файла маршрутизации</h2>
-    <div>
-      В общем файл должен выглядить так
-      <pre><code>
-      function FindProxyForURL(url, host)
-      {
-        $Proxy = "PROXY proxy.example.local:8090";
-
-        //PROXY
-        if (shExpMatch(host, "example.com") || shExpMatch(host, "*.example.com")) {
-              return "PROXY 192.0.2.10:3128";
-        }
-        ...
-
-        //DIRECT
-        if (shExpMatch(url, "*//example.ru/*")) {return "DIRECT";}
-        ...
-
-        //constants
-        ...
-
-        alert("Return" + $Proxy);
-
-        return $Proxy;
-      }
-      </code></pre>
-      <p>Крайне необходимо расставить маркеры //PROXY, //DIRECT и //constants, потому что парсер скрипта ориентируется на них для работы с файлом.</p>
-      <p>Все прокси правила ставятся сразу после //PROXY, все директ правила после //DIRECT, 
-      а после //constants стоят константы - их отличие заключается в том, что парсер вообще их не видит, то есть удалить их через редактор невозможно.</p>
-      <p>Все новые правила будут добавлять в верх списка под соответствующим маркером. При отсутствии маркеров правила будут добавлять после определения $Proxy.</p>
-    </div>
-  </div>
 
 <script>
 let proxies = [];
@@ -314,11 +276,6 @@ function toggleSettings() {
 
 function toggleRules() {
   const s = document.getElementById('rules');
-  s.style.display = s.style.display === 'block' ? 'none' : 'block';
-}
-
-function toggleInfo() {
-  const s = document.getElementById('info');
   s.style.display = s.style.display === 'block' ? 'none' : 'block';
 }
 
