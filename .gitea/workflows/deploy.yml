@@ -1,0 +1,17 @@
+name: build-and-push
+on:
+  push:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone
+        uses: actions/checkout@v4
+
+      - name: Build Image
+        run: docker build -t 10.10.20.247:5000/prct-site:latest .
+        
+      - name: Push Image
+        run: docker push 10.10.20.247:5000/prct-site:latest .
