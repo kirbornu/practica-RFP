@@ -8,10 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clone
-        uses: git clone http://10.10.20.250:3000/vboxuser/prtc_site.git .
+        uses: actions/checkout@v4
 
       - name: Build Image
         run: docker build -t 10.10.20.247:5000/prct-site:latest .
         
       - name: Push Image
-        run: docker push 10.10.20.247:5000/prct-site:latest .
+        run: docker push 10.10.20.247:5000/prct-site:latest
