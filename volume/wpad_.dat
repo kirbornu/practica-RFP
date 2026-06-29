@@ -6,10 +6,6 @@ function FindProxyForURL(url, host)
 	
     //PROXY
 
-    if (shExpMatch(host, "124.com") || shExpMatch(host, "*.124.com")) {
-        return "PROXY 172.28.36.2:3128";
-    }
-
     if (shExpMatch(host, "hennge.com") || shExpMatch(host, "*.hennge.com")) {
         return "PROXY 172.28.36.2:10808";
     }
@@ -42,7 +38,7 @@ function FindProxyForURL(url, host)
     }
 
     //DIRECT
-    if (shExpMatch(url, "*//123.com/*")) {return "DIRECT";}
+	if (shExpMatch(url, "*//kto.prochitaet.tot.zdohnet.ru/*")) {return "DIRECT";}
 	
 
 //		alert("url = " + url + " *** host = " + host + " *** Resolved IP = " + dnsResolve(host));
