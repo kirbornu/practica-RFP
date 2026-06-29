@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>routing editor</title>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem; background: #fff; color: #111; }
+    h2 { font-size: 15px; font-weight: 500; margin: 0 0 .75rem; }
+    label { font-size: 12px; color: #666; display: block; margin-bottom: 5px; }
+    pre { background-color: #f4f4f4; padding: 15px; border-radius: 5px; overflow-x: auto; white-space: pre; }
+    input, select {
+      width: 100%; box-sizing: border-box;
+      padding: 7px 10px; font-size: 13px;
+      border: 1px solid #ccc; border-radius: 6px; margin-bottom: 4px;
+    }
+    input:focus, select:focus { outline: none; border-color: #888; }
+    .field { margin-bottom: .875rem; }
+    .msg { font-size: 12px; min-height: 16px; margin: 3px 0 0; }
+    .err { color: #c0392b; }
+    .ok  { color: #27ae60; }
+    .row { display: flex; gap: 8px; }
+    .row input { flex: 1; margin-bottom: 0; }
+    button {
+      padding: 7px 13px; font-size: 13px;
+      border: 1px solid #ccc; border-radius: 6px;
+      background: #fff; cursor: pointer; white-space: nowrap;
+    }
+    button:hover { background: #f5f5f5; }
+    button.full { width: 100%; }
+    button.danger { color: #c0392b; border-color: #e0a0a0; font-size: 12px; padding: 3px 8px; }
+    .section { background: #f9f9f9; border: 1px solid #eee; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+    .proxy-list { margin-top: .5rem; }
+    .proxy-item, .rule-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 5px 0; border-bottom: 1px solid #eee; font-size: 13px;
+    }
+    .proxy-item:last-child, .rule-item:last-child { border-bottom: none; }
+    .proxy-name { font-weight: 500; margin-right: 8px; }
+    .proxy-addr { color: #666; font-family: monospace; font-size: 12px; }
+    .empty { font-size: 12px; color: #aaa; }
+    .rule-domain { font-family: monospace; font-size: 12px; flex: 1; }
+    .rule-type { font-size: 11px; padding: 2px 6px; border-radius: 4px; margin: 0 8px; white-space: nowrap; }
+    .rule-type.proxy { background: #fff3cd; color: #856404; }
+    .rule-type.direct { background: #d1e7dd; color: #0a3622; }
+    .rule-proxy-addr { font-size: 11px; color: #888; font-family: monospace; margin-right: 8px; }
+    .rules-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: .75rem; }
+    #rules-list { max-height: 400px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+
+<p style="display:flex; justify-content:space-between; align-items:center; margin:0 0 1rem; font-size:13px;">
+  <a href="/" style="color:#2563eb; text-decoration:none;">← На главную</a>
+  <span>
+    <a href="/tetris" style="color:#2563eb; text-decoration:none;">🎮 ASCII Тетрис</a>
+    <a href="/logout" style="color:#2563eb; text-decoration:none; margin-left:14px;">Выход</a>
+  </span>
+</p>
+
+<div class="section">
+  <h2>Добавить правило</h2>
+  <div class="field">
+    <label>Домен</label>
+    <input type="text" id="domain-input" placeholder="example.com" />
+    <p class="msg err" id="domain-err"></p>
+  </div>
+  <div class="field">
+    <label>Тип</label>
+    <select id="route-type">
+      <option value="DIRECT">DIRECT</option>
+    </select>
+  </div>
+  <button class="full" onclick="addRule()">Добавить правило</button>
+  <p class="msg" id="rule-msg"></p>
+</div>
+
+<button onclick="toggleSettings()" style="margin-bottom: 1.25rem;">Расширенные настройки</button>
+
+<div id="settings" style="display:none;">
+
+  <div class="section">
+    <h2>Файл маршрутизации</h2>
+    <div class="field">
+      <label>Путь к файлу</label>
+      <div class="row">
+        <input type="text" id="file-path" placeholder="/etc/proxy/proxy.pac" />
+        <button onclick="savePath()">Сохранить</button>
+      </div>
+      <p class="msg" id="file-msg"></p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Адреса прокси</h2>
+    <div class="proxy-list" id="proxy-list"><p class="empty">Нет адресов</p></div>
+    <div style="margin-top:.75rem;">
+    <input type="text" id="proxy-name" placeholder="Название (например: Основной)" style="flex:2;" />
+      <div class="row" style="margin-bottom:4px;">
+        <input type="text" id="proxy-addr" placeholder="IP-адрес (например: 192.0.2.10)" style="flex:1;" />
+        <input type="text" id="proxy-port" placeholder="Порт (например: 3128)" style="flex:1;" />
+        <button onclick="addProxy()">+</button>
+      </div>
+      <p class="msg" id="proxy-msg"></p>
+    </div>
+  </div>
+</div>
+
+<div></div>
+
+<button onclick="toggleRules()" style="margin-bottom: 1.25rem;">Существующие правила</button>
+
+<div id="rules" class="section" style="display:none;">
+  <div class="rules-header">
+    <h2 style="margin:0;">Существующие правила</h2>
+    <button onclick="loadRules()" style="font-size:12px; padding:4px 10px;">↻ Обновить</button>
+  </div>
+  <div id="rules-list"><p class="empty">Нажмите «Обновить» чтобы загрузить правила из файла</p></div>
+  <p class="msg" id="rules-msg"></p>
+</div>
+
+<script>
+let proxies = [];
+
+async function init() {
+  const cfg = await fetch('/api/config').then(r => r.json());
+  if (cfg.routing_file) {
+    document.getElementById('file-path').value = cfg.routing_file;
+    setMsg('file-msg', '✓ Загружено из конфига', true);
+  }
+  proxies = cfg.proxies || [];
+  renderProxies();
+  await loadRules();
+}
+
+function setMsg(id, text, ok) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'msg ' + (ok ? 'ok' : 'err');
+}
+
+async function savePath() {
+  const path = document.getElementById('file-path').value.trim();
+  if (!path) { setMsg('file-msg', 'Введите путь', false); return; }
+  const r = await fetch('/api/config', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({routing_file: path})
+  }).then(r => r.json());
+  setMsg('file-msg', r.ok ? '✓ Сохранено' : r.error, !!r.ok);
+}
+
+function renderProxies() {
+  const el = document.getElementById('proxy-list');
+  const sel = document.getElementById('route-type');
+  el.innerHTML = proxies.length
+    ? proxies.map((p, i) =>
+        `<div class="proxy-item" id="proxy-item-${i}">
+          <span><span class="proxy-name">${p.name}</span><span class="proxy-addr">${p.address}</span></span>
+          <button class="danger" onclick="deleteProxy(${i})">✕</button>
+        </div>
+        <p class="msg err" id="proxy-item-err-${i}" style="margin:0 0 4px;"></p>`
+      ).join('')
+    : '<p class="empty">Нет прокси-серверов</p>';
+
+  sel.innerHTML = '<option value="DIRECT">DIRECT</option>' +
+    proxies.map(p => `<option value="PROXY ${p.address}">PROXY — ${p.name} (${p.address})</option>`).join('');
+}
+
+let currentRules = [];
+
+function renderRules(rules) {
+  currentRules = rules;
+  const el = document.getElementById('rules-list');
+  if (!rules.length) {
+    el.innerHTML = '<p class="empty">Правил нет</p>';
+    return;
+  }
+  el.innerHTML = rules.map((r, i) => {
+    const typeClass = r.type === 'PROXY' ? 'proxy' : 'direct';
+    const proxyInfo = r.proxy ? `<span class="rule-proxy-addr">${r.proxy}</span>` : '';
+    return `<div class="rule-item">
+      <span class="rule-domain">${r.domain}</span>
+      ${proxyInfo}
+      <span class="rule-type ${typeClass}">${r.type}</span>
+      <button class="danger" onclick="deleteRule(${i})">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function loadRules() {
+  const r = await fetch('/api/rules').then(r => r.json());
+  if (r.error) { setMsg('rules-msg', r.error, false); return; }
+  setMsg('rules-msg', '', true);
+  renderRules(r.rules);
+}
+
+async function addProxy() {
+  const name = document.getElementById('proxy-name').value.trim();
+  const address = document.getElementById('proxy-addr').value.trim();
+  const port = document.getElementById('proxy-port').value.trim();
+  const r = await fetch('/api/proxies', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({name, address, port})
+  }).then(r => r.json());
+  if (r.ok) {
+    proxies = r.proxies;
+    renderProxies();
+    document.getElementById('proxy-name').value = '';
+    document.getElementById('proxy-addr').value = '';
+    document.getElementById('proxy-port').value = '';
+    setMsg('proxy-msg', '✓ Добавлен', true);
+  } else {
+    setMsg('proxy-msg', r.error, false);
+  }
+}
+
+async function deleteProxy(idx) {
+  const errEl = document.getElementById(`proxy-item-err-${idx}`);
+  if (errEl) errEl.textContent = '';
+  const r = await fetch(`/api/proxies/${idx}`, {method:'DELETE'}).then(r => r.json());
+  if (r.ok) {
+    proxies = r.proxies;
+    renderProxies();
+  } else {
+    if (errEl) errEl.textContent = r.error;
+    else setMsg('proxy-msg', r.error, false);
+  }
+}
+
+function isValidDomain(d) {
+  return /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(d);
+}
+
+async function addRule() {
+  const domain = document.getElementById('domain-input').value.trim().toLowerCase();
+  const selected = document.getElementById('route-type').value;
+  document.getElementById('domain-err').textContent = '';
+  document.getElementById('rule-msg').textContent = '';
+
+  if (!domain) { setMsg('domain-err', 'Введите домен', false); return; }
+  if (!isValidDomain(domain)) { setMsg('domain-err', 'Невалидный домен. Пример: example.com', false); return; }
+
+  const type = selected.startsWith('PROXY') ? 'PROXY' : 'DIRECT';
+  const proxy_address = selected.startsWith('PROXY') ? selected.replace('PROXY ', '') : '';
+
+  const r = await fetch('/api/rules', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({domain, type, proxy_address})
+  }).then(r => r.json());
+
+  if (r.ok) {
+    document.getElementById('domain-input').value = '';
+    setMsg('rule-msg', '✓ ' + r.message, true);
+    renderRules(r.rules);
+  } else {
+    setMsg('rule-msg', r.error, false);
+  }
+}
+
+async function deleteRule(idx) {
+  const rule = currentRules[idx];
+  const body = { type: rule.type };
+  if (rule.type === 'PROXY') {
+    body.domain = rule.domain;
+  } else {
+    body.pattern = rule.domain; // для DIRECT domain содержит полный паттерн
+  }
+  const r = await fetch('/api/rules/delete', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  }).then(r => r.json());
+  if (r.ok) {
+    setMsg('rules-msg', '✓ ' + r.message, true);
+    renderRules(r.rules);
+  } else {
+    setMsg('rules-msg', r.error, false);
+  }
+}
+
+function toggleSettings() {
+  const s = document.getElementById('settings');
+  s.style.display = s.style.display === 'block' ? 'none' : 'block';
+}
+
+function toggleRules() {
+  const s = document.getElementById('rules');
+  s.style.display = s.style.display === 'block' ? 'none' : 'block';
+}
+
+document.getElementById('domain-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') addRule();
+});
+
+init();
+</script>
+</body>
+</html>

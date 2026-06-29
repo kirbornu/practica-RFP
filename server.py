@@ -1,13 +1,64 @@
 import json
 import os
 import re
-from flask import Flask, request, jsonify, send_from_directory
+import secrets
+import sys
+from flask import (
+    Flask, request, jsonify, send_from_directory,
+    session, redirect, url_for,
+)
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 CONFIG_FILE = os.environ.get("CONFIG_FILE", "config.json")
+USERS_FILE = os.environ.get("USERS_FILE", "users.json")
+
+# --- Авторизация / сессии ---
+# SECRET_KEY нужен для подписи cookie-сессий. Без него при перезапуске ключ
+# меняется и всех разлогинивает — поэтому в проде задавайте его через env.
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+if not os.environ.get("SECRET_KEY"):
+    print("ВНИМАНИЕ: SECRET_KEY не задан — сессии не переживут перезапуск. "
+          "Задайте переменную окружения SECRET_KEY в проде.")
+
+# Приложение доступно извне → cookie только по HTTPS и без доступа из JS.
+# Для локальной отладки по http можно выставить COOKIE_SECURE=false.
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "true").lower() != "false",
+)
+
+# Эндпоинты, доступные без входа.
+PUBLIC_ENDPOINTS = {"login_page", "login", "static"}
+
+
+def load_users():
+    """Возвращает {логин: хеш_пароля}. Пусто, если файла нет."""
+    if os.path.exists(USERS_FILE):
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+
+def save_users(users):
+    with open(USERS_FILE, "w", encoding="utf-8") as f:
+        json.dump(users, f, ensure_ascii=False, indent=2)
+
+
+@app.before_request
+def require_login():
+    if request.endpoint in PUBLIC_ENDPOINTS:
+        return
+    if session.get("user"):
+        return
+    # API отвечает честным 401, страницы — редиректом на форму входа.
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Требуется авторизация"}), 401
+    return redirect(url_for("login_page"))
 
 
 def load_config():
@@ -191,6 +242,34 @@ def insert_direct_rule(content, domain):
 
 # --- API ---
 
+@app.route("/login")
+def login_page():
+    return send_from_directory(BASE_DIR, "login.html")
+
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    data = request.get_json(silent=True) or {}
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+    pw_hash = load_users().get(username)
+    if not pw_hash or not check_password_hash(pw_hash, password):
+        return jsonify({"error": "Неверный логин или пароль"}), 401
+    session["user"] = username
+    return jsonify({"ok": True, "user": username})
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login_page"))
+
+
+@app.route("/api/me", methods=["GET"])
+def whoami():
+    return jsonify({"user": session.get("user")})
+
+
 @app.route("/")
 def home():
     return send_from_directory(BASE_DIR, "home.html")
@@ -198,7 +277,7 @@ def home():
 
 @app.route("/editor")
 def index():
-    return send_from_directory(BASE_DIR, "editor.html")
+    return send_from_directory(BASE_DIR, "index.html")
 
 
 @app.route("/tetris")
@@ -393,6 +472,54 @@ def delete_rule():
     return jsonify({"ok": True, "message": f"{label} удалён", "rules": rules})
 
 
+def _cli():
+    """Управление пользователями: adduser / deluser / listusers."""
+    cmd = sys.argv[1]
+    users = load_users()
+    if cmd == "adduser":
+        import getpass
+        name = sys.argv[2] if len(sys.argv) > 2 else input("Логин: ").strip()
+        pw = getpass.getpass("Пароль: ")
+        pw2 = getpass.getpass("Повторите пароль: ")
+        if not name or not pw:
+            print("Логин и пароль не могут быть пустыми"); sys.exit(1)
+        if pw != pw2:
+            print("Пароли не совпадают"); sys.exit(1)
+        users[name] = generate_password_hash(pw)
+        save_users(users)
+        print(f"Пользователь '{name}' сохранён в {USERS_FILE}")
+    elif cmd == "deluser":
+        name = sys.argv[2] if len(sys.argv) > 2 else input("Логин: ").strip()
+        if users.pop(name, None) is None:
+            print(f"Пользователь '{name}' не найден"); sys.exit(1)
+        save_users(users)
+        print(f"Пользователь '{name}' удалён")
+    elif cmd == "listusers":
+        print("\n".join(users) if users else "Пользователей нет")
+    else:
+        print(f"Неизвестная команда: {cmd}")
+        print("Доступно: adduser [логин], deluser [логин], listusers")
+        sys.exit(1)
+
+
+def _bootstrap_admin():
+    """Создаёт первого пользователя из env, если хранилище пустое (для Docker)."""
+    if load_users():
+        return
+    name = os.environ.get("INITIAL_ADMIN")
+    pw = os.environ.get("INITIAL_ADMIN_PASSWORD")
+    if name and pw:
+        save_users({name: generate_password_hash(pw)})
+        print(f"Создан первый пользователь '{name}' из INITIAL_ADMIN")
+
+
 if __name__ == "__main__":
-    print("Routing editor запущен: http://localhost:5000")
-    app.run(debug=False, port=5000, host='0.0.0.0')
+    if len(sys.argv) > 1:
+        _cli()
+    else:
+        _bootstrap_admin()
+        if not load_users():
+            print("ВНИМАНИЕ: нет ни одного пользователя — вход невозможен.")
+            print("Создайте: python server.py adduser <логин>")
+        print("Routing editor запущен: http://localhost:5000")
+        app.run(debug=False, port=5000, host='0.0.0.0')

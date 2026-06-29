@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Вход</title>
+  <style>
+    body {
+      font-family: sans-serif; max-width: 360px; margin: 4rem auto; padding: 0 1rem;
+      background: #fff; color: #111;
+    }
+    h2 { font-size: 16px; font-weight: 600; margin: 0 0 1rem; }
+    label { font-size: 12px; color: #666; display: block; margin-bottom: 5px; }
+    input {
+      width: 100%; box-sizing: border-box;
+      padding: 8px 10px; font-size: 13px;
+      border: 1px solid #ccc; border-radius: 6px; margin-bottom: 12px;
+    }
+    input:focus { outline: none; border-color: #888; }
+    button {
+      width: 100%; padding: 9px 13px; font-size: 13px;
+      border: 1px solid #ccc; border-radius: 6px;
+      background: #fff; cursor: pointer;
+    }
+    button:hover { background: #f5f5f5; }
+    .section {
+      background: #f9f9f9; border: 1px solid #eee; border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+    }
+    .msg { font-size: 12px; min-height: 16px; margin: 10px 0 0; color: #c0392b; }
+  </style>
+</head>
+<body>
+
+<div class="section">
+  <h2>Вход</h2>
+  <div>
+    <label>Логин</label>
+    <input type="text" id="username" autocomplete="username" autofocus />
+    <label>Пароль</label>
+    <input type="password" id="password" autocomplete="current-password" />
+    <button onclick="doLogin()">Войти</button>
+    <p class="msg" id="msg"></p>
+  </div>
+</div>
+
+<script>
+async function doLogin() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const msg = document.getElementById('msg');
+  msg.textContent = '';
+  if (!username || !password) { msg.textContent = 'Введите логин и пароль'; return; }
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password})
+    });
+    const data = await r.json();
+    if (r.ok && data.ok) {
+      window.location.href = '/';
+    } else {
+      msg.textContent = data.error || 'Ошибка входа';
+    }
+  } catch (e) {
+    msg.textContent = 'Сетевая ошибка';
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>
