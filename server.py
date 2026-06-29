@@ -192,8 +192,13 @@ def insert_direct_rule(content, domain):
 # --- API ---
 
 @app.route("/")
+def home():
+    return send_from_directory(BASE_DIR, "home.html")
+
+
+@app.route("/editor")
 def index():
-    return send_from_directory(BASE_DIR, "index.html")
+    return send_from_directory(BASE_DIR, "editor.html")
 
 
 @app.route("/tetris")

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Навигация</title>
+  <style>
+    body {
+      font-family: sans-serif; max-width: 600px; margin: 2rem auto; padding: 0 1rem;
+      background: #fff; color: #111;
+    }
+    h1 { font-size: 20px; font-weight: 600; margin: 0 0 .35rem; }
+    .subtitle { font-size: 13px; color: #666; margin: 0 0 1.5rem; }
+    .nav-grid { display: flex; flex-direction: column; gap: 1rem; }
+    a.card {
+      display: block; text-decoration: none; color: inherit;
+      background: #f9f9f9; border: 1px solid #eee; border-radius: 8px;
+      padding: 1rem 1.25rem; transition: background .12s, border-color .12s;
+    }
+    a.card:hover { background: #f2f6ff; border-color: #cdddff; }
+    .card-title { font-size: 15px; font-weight: 600; margin: 0 0 .25rem; }
+    .card-desc { font-size: 13px; color: #666; margin: 0; }
+    .card-icon { font-size: 18px; margin-right: 6px; }
+  </style>
+</head>
+<body>
+
+<h1>Панель</h1>
+<p class="subtitle">Выберите раздел</p>
+
+<div class="nav-grid">
+  <a class="card" href="/editor">
+    <p class="card-title">Редактор маршрутизации</p>
+    <p class="card-desc">Управление правилами PAC-файла: прокси, DIRECT-правила, адреса прокси-серверов.</p>
+  </a>
+  <a class="card" href="/tetris">
+    <p class="card-title">ASCII Тетрис</p>
+    <p class="card-desc">Классический тетрис, отрисованный ASCII-символами. Управление с клавиатуры.</p>
+  </a>
+</div>
+
+</body>
+</html>
