@@ -196,6 +196,11 @@ def index():
     return send_from_directory(BASE_DIR, "index.html")
 
 
+@app.route("/tetris")
+def tetris():
+    return send_from_directory(BASE_DIR, "tetris.html")
+
+
 @app.route("/api/config", methods=["GET"])
 def get_config():
     return jsonify(load_config())
