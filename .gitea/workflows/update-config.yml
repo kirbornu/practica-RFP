@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Pull Files
-        runs: |
+        run: |
           ssh vboxuser@10.10.20.253 "
             wget -O /opt/prct-site/config.json http://10.10.20.250:3000/vboxuser/prtc_site/raw/branch/master/volume/config.json &&
             wget -O /opt/prct-site/wpad_.dat http://10.10.20.250:3000/vboxuser/prtc_site/raw/branch/master/volume/wpad_.dat
