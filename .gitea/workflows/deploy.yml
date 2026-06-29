@@ -41,6 +41,6 @@ jobs:
             --restart unless-stopped \
             -p 8080:5000 \
             -v /opt/prct-site/wpad_.dat:/app/wpad_.dat \
-            -v /opt/prct-site/config.json:/app/config.json \            
+            -v /opt/prct-site/config.json:/app/config.json \
             192.0.2.40:5000/prct-site:latest
           "
