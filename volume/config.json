@@ -1,5 +1,5 @@
 {
-  "routing_file": "",
+  "routing_file": "/app/wpad_.dat",
   "proxies": [
     {
       "name": "first",
@@ -8,6 +8,10 @@
     {
       "name": "second",
       "address": "172.28.36.2:10808"
+    },
+    {
+      "name": "meow",
+      "address": "172.28.36.2:1080"
     }
   ]
 }
