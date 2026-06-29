@@ -1,7 +1,11 @@
 name: build-and-deploy
 on:
   push:
-    branches: [master]
+    branches:
+      - master
+    paths-ignore:
+      - 'volume/**'
+      - '.gitea/**'
 
 jobs:
   build:
