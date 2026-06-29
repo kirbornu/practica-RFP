@@ -1,4 +1,4 @@
-name: build-and-push
+name: build-and-deploy
 on:
   push:
     branches: [master]
@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Clone
+      - name: Clone Source Code
         uses: actions/checkout@v4
 
       - name: Build Image
@@ -16,11 +16,31 @@ jobs:
       - name: Push Image
         run: docker push 10.10.20.247:5000/prct-site:latest
 
-      - name: Deploy ebat ego v sraku
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Pull New Image
         run: |
           ssh vboxuser@10.10.20.253 "
-            docker pull 10.10.20.247:5000/prct-site:latest &&
+            docker pull 10.10.20.247:5000/prct-site:latest
+          "
+
+      - name: Remove Old Image
+        run: |
+          ssh vboxuser@10.10.20.253 "
             docker stop prct-site || true &&
-            docker rm prct-site || true &&
-            docker run -d --name prct-site -p 8080:5000 10.10.20.247:5000/prct-site:latest
+            docker rm prct-site || true
+          "
+
+      - name: Run New Image
+        run: |
+          ssh vboxuser@10.10.20.253 "
+            docker run -d \
+            --name prct-site \
+            --restart unless-stopped \
+            -p 8080:5000 \
+            -v /opt/prct-site/wpad_.dat:/app/wpad_.dat \
+            -v /opt/prct-site/config.json:/app/config.json \            
+            10.10.20.247:5000/prct-site:latest
           "
