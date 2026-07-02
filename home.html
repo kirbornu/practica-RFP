@@ -25,6 +25,11 @@
 </head>
 <body>
 
+<p style="display:flex; justify-content:flex-end; align-items:center; gap:10px; margin:0 0 1rem; font-size:13px; color:#666;">
+  <span id="whoami"></span>
+  <a href="/logout" style="color:#2563eb; text-decoration:none;">Выход</a>
+</p>
+
 <h1>Панель</h1>
 <p class="subtitle">Выберите раздел</p>
 
@@ -38,6 +43,12 @@
     <p class="card-desc">Классический тетрис, отрисованный ASCII-символами. Управление с клавиатуры.</p>
   </a>
 </div>
+
+<script>
+  fetch('/api/me').then(r => r.json()).then(d => {
+    if (d.user) document.getElementById('whoami').textContent = d.user;
+  }).catch(() => {});
+</script>
 
 </body>
 </html>
