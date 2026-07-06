@@ -1,0 +1,67 @@
+# Прод-стек: приложение (gunicorn) + Redis (сессии) + Caddy (HTTPS-прокси).
+#
+# На хосте рядом с этим файлом должны лежать:
+#   .env              — секреты (SECRET_KEY, SITE_ADDRESS, первый админ)
+#   Caddyfile         — конфиг Caddy
+#   config.json, users.json, wpad_.dat — данные приложения (bind-mount)
+#
+# Запуск:  docker compose pull && docker compose up -d
+
+services:
+  app:
+    image: 192.0.2.40:5000/prct-site:latest
+    restart: unless-stopped
+    environment:
+      # Подпись cookie-сессий — обязателен, задаётся в .env.
+      SECRET_KEY: ${SECRET_KEY}
+      # Серверные сессии в Redis (сервис ниже, имя хоста = имя сервиса).
+      REDIS_URL: redis://redis:6379/0
+      CONFIG_FILE: /app/config.json
+      USERS_FILE: /app/users.json
+      COOKIE_SECURE: "true"
+      # Первый пользователь создаётся из этих переменных при пустом users.json.
+      INITIAL_ADMIN: ${INITIAL_ADMIN:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+    volumes:
+      - /opt/prct-site/wpad_.dat:/app/wpad_.dat
+      - /opt/prct-site/config.json:/app/config.json
+      - /opt/prct-site/users.json:/app/users.json
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Наружу порт не публикуем — доступ только через Caddy.
+    expose:
+      - "5000"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Включаем персистентность, чтобы сессии переживали рестарт контейнера.
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-https://192.0.2.20}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  redis-data:
+  caddy-data:
+  caddy-config:
