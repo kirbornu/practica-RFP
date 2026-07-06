@@ -71,9 +71,10 @@ PUBLIC_PORTS = set(
     p.strip() for p in os.environ.get("PUBLIC_PORTS", "5001").split(",") if p.strip()
 )
 
-# Что разрешено на публичном порту. Всё остальное (в т.ч. /login, /editor,
-# /api/config|rules|proxies) отдаёт 404 — снаружи их как будто не существует.
-PUBLIC_ALLOWED_ENDPOINTS = {"home", "tetris", "whoami", "static"}
+# Что разрешено на публичном порту: только корень (отдаёт тетрис) и статика.
+# Всё остальное (в т.ч. /login, /logout, /api/*) отдаёт 404 — снаружи их как
+# будто не существует.
+PUBLIC_ALLOWED_ENDPOINTS = {"home", "static"}
 
 
 def is_public_request():
@@ -319,28 +320,14 @@ def logout():
     return redirect(url_for("login_page"))
 
 
-@app.route("/api/me", methods=["GET"])
-def whoami():
-    # На публичном порту пользователя нет и быть не может; отдаём флаг режима,
-    # чтобы фронт скрыл редактор и элементы авторизации.
-    if is_public_request():
-        return jsonify({"user": None, "public": True})
-    return jsonify({"user": session.get("user"), "public": False})
-
-
 @app.route("/")
 def home():
-    return send_from_directory(BASE_DIR, "home.html")
-
-
-@app.route("/editor")
-def index():
+    # Каждый порт отдаёт свою страницу на корне:
+    #   публичный (8090) — тетрис без авторизации;
+    #   приватный (8080) — редактор (сюда before_request требует вход).
+    if is_public_request():
+        return send_from_directory(BASE_DIR, "tetris.html")
     return send_from_directory(BASE_DIR, "editor.html")
-
-
-@app.route("/tetris")
-def tetris():
-    return send_from_directory(BASE_DIR, "tetris.html")
 
 
 @app.route("/api/config", methods=["GET"])
