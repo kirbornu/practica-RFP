@@ -8,15 +8,30 @@ on:
       - '.gitea/**'
 
 jobs:
+  # ГЕЙТ: тесты гоняются первыми. Если красные — build/deploy не стартуют
+  # (см. needs:), и битый код не доедет до прода.
+  test:
+    runs-on: tests
+    steps:
+      - name: Clone Source Code
+        uses: actions/checkout@v4
+
+      - name: Install deps
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run unit + API tests
+        run: pytest -m "not smoke" -v
+
   build:
     runs-on: ubuntu-latest
+    needs: test          # собираем образ только если тесты зелёные
     steps:
       - name: Clone Source Code
         uses: actions/checkout@v4
 
       - name: Build Image
         run: docker build -t 192.0.2.40:5000/prct-site:latest .
-        
+
       - name: Push Image
         run: docker push 192.0.2.40:5000/prct-site:latest
 
@@ -38,3 +53,21 @@ jobs:
             docker compose pull &&
             docker compose up -d --remove-orphans
           "
+
+  # SMOKE: после деплоя бьём по ЖИВОМУ проду и проверяем, что он реально
+  # поднялся и защищён. Красные smoke = деплой прошёл, но прод нездоров.
+  smoke:
+    runs-on: tests
+    needs: deploy
+    steps:
+      - name: Clone Source Code
+        uses: actions/checkout@v4
+
+      - name: Install deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Smoke tests against live prod
+        env:
+          SMOKE_BASE_URL: http://192.0.2.20:8080
+          SMOKE_PUBLIC_URL: http://192.0.2.20:8090
+        run: pytest tests/test_smoke.py -v

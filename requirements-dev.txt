@@ -1,3 +1,5 @@
 # Зависимости ТОЛЬКО для тестов (в прод-образ не идут).
 # Устанавливать: pip install -r requirements.txt -r requirements-dev.txt
 pytest==9.1.1
+# requests нужен только smoke-тестам (запросы к живому проду).
+requests==2.32.3
