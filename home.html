@@ -25,7 +25,7 @@
 </head>
 <body>
 
-<p style="display:flex; justify-content:flex-end; align-items:center; gap:10px; margin:0 0 1rem; font-size:13px; color:#666;">
+<p id="account-bar" style="display:none; justify-content:flex-end; align-items:center; gap:10px; margin:0 0 1rem; font-size:13px; color:#666;">
   <span id="whoami"></span>
   <a href="/logout" style="color:#2563eb; text-decoration:none;">Выход</a>
 </p>
@@ -34,7 +34,7 @@
 <p class="subtitle">Выберите раздел</p>
 
 <div class="nav-grid">
-  <a class="card" href="/editor">
+  <a class="card" id="editor-card" href="/editor">
     <p class="card-title">Редактор маршрутизации</p>
     <p class="card-desc">Управление правилами PAC-файла: прокси, DIRECT-правила, адреса прокси-серверов.</p>
   </a>
@@ -46,6 +46,12 @@
 
 <script>
   fetch('/api/me').then(r => r.json()).then(d => {
+    // Публичный порт: без авторизации и без редактора — только тетрис.
+    if (d.public) {
+      document.getElementById('editor-card').remove();
+      return;
+    }
+    document.getElementById('account-bar').style.display = 'flex';
     if (d.user) document.getElementById('whoami').textContent = d.user;
   }).catch(() => {});
 </script>
