@@ -3,3 +3,5 @@
 pytest==9.1.1
 # requests нужен только smoke-тестам (запросы к живому проду).
 requests==2.32.3
+
+Werkzeug==3.0.3
