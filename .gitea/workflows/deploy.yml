@@ -5,7 +5,6 @@ on:
       - master
     paths-ignore:
       - 'volume/**'
-      - '.gitea/**'
 
 jobs:
   # ГЕЙТ: тесты гоняются первыми. Если красные — build/deploy не стартуют
@@ -14,7 +13,7 @@ jobs:
     runs-on: tests
     # Выполняется в контейнере с готовым Python (git+pip внутри) — на ВМ
     # ставить зависимости не нужно, обходит «externally-managed» Debian.
-    container: python:3.11
+    container: nikolaik/python-nodejs:python:3.11-nodejs20
     steps:
       - name: Clone Source Code
         uses: actions/checkout@v4
@@ -62,7 +61,7 @@ jobs:
   smoke:
     runs-on: tests
     needs: deploy
-    container: python:3.11
+    container: nikolaik/python-nodejs:python:3.11-nodejs20
     steps:
       - name: Clone Source Code
         uses: actions/checkout@v4
