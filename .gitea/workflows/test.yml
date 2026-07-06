@@ -17,7 +17,7 @@ jobs:
     # Джоб выполняется ВНУТРИ контейнера с готовым Python — на самой ВМ
     # ставить python/pip не нужно (это обходит «externally-managed» Debian).
     # Полный образ python:3.11 уже содержит git (нужен checkout) и pip.
-    container: nikolaik/python-nodejs:python:3.11-nodejs20
+    container: nikolaik/python-nodejs:python3.11-nodejs20
     steps:
       - name: Клонировать код
         uses: actions/checkout@v4

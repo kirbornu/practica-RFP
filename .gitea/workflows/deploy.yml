@@ -13,7 +13,7 @@ jobs:
     runs-on: tests
     # Выполняется в контейнере с готовым Python (git+pip внутри) — на ВМ
     # ставить зависимости не нужно, обходит «externally-managed» Debian.
-    container: nikolaik/python-nodejs:python:3.11-nodejs20
+    container: nikolaik/python-nodejs:python3.11-nodejs20
     steps:
       - name: Clone Source Code
         uses: actions/checkout@v4
@@ -61,7 +61,7 @@ jobs:
   smoke:
     runs-on: tests
     needs: deploy
-    container: nikolaik/python-nodejs:python:3.11-nodejs20
+    container: nikolaik/python-nodejs:python3.11-nodejs20
     steps:
       - name: Clone Source Code
         uses: actions/checkout@v4
