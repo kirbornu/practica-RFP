@@ -1,0 +1,26 @@
+# Быстрый фидбэк: юнит + API тесты на каждый пуш в ветку и на каждый PR.
+# Прод-пайплайн (deploy.yml) для master гоняет тесты отдельно как gate —
+# поэтому здесь master исключён, чтобы не дублировать прогон.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches-ignore:
+      - master
+
+jobs:
+  test:
+    # Метка нашей Debian-ВМ, зарегистрированной как Gitea Actions runner.
+    # См. TESTING.md → «Настройка Debian-ВМ как раннера».
+    runs-on: tests
+    steps:
+      - name: Клонировать код
+        uses: actions/checkout@v4
+
+      - name: Установить зависимости
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Юнит + API тесты
+        # -m "not smoke" исключает smoke-тесты: тут нет развёрнутого прода.
+        run: pytest -m "not smoke" -v
