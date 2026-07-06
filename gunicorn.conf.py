@@ -4,7 +4,6 @@
 """
 import os
 
-# Слушаем внутри docker-сети; наружу трафик выпускает Caddy, а не gunicorn.
 bind = "0.0.0.0:5000"
 
 # Число воркеров/потоков. Приложение почти всё время ждёт файловый/сетевой
@@ -16,9 +15,6 @@ threads = int(os.environ.get("GUNICORN_THREADS", "4"))
 accesslog = "-"
 errorlog = "-"
 loglevel = os.environ.get("GUNICORN_LOGLEVEL", "info")
-
-# Caddy стоит на том же docker-хосте, доверяем его заголовкам X-Forwarded-*.
-forwarded_allow_ips = "*"
 
 # Перезапускаем воркеры после N запросов — страховка от утечек памяти.
 max_requests = 1000

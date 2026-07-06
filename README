@@ -17,15 +17,12 @@
 полноценный стек из трёх сервисов (`docker-compose.yml`):
 
 ```
-клиент ──HTTPS──► Caddy ──HTTP──► gunicorn (Flask) ──► Redis (сессии)
-                  :443            app:5000              redis:6379
+клиент ──HTTP──► gunicorn (Flask) ──► Redis (сессии)
+                 app:5000              redis:6379
 ```
 
 - **gunicorn** — прод-WSGI-сервер вместо `flask run` (несколько воркеров,
   устойчивость к нагрузке). Конфиг — `gunicorn.conf.py`.
-- **Caddy** — обратный прокси, терминирует **HTTPS** и сам управляет
-  сертификатами (Let's Encrypt для домена или внутренний CA для IP). Конфиг —
-  `Caddyfile`.
 - **Redis** — серверное хранилище сессий. В cookie у клиента лежит только
   подписанный идентификатор сессии, а данные (кто вошёл) — в Redis. Это даёт
   корректный серверный logout, единое хранилище на все воркеры и отсутствие
@@ -33,7 +30,7 @@
 
 ## Запуск в проде (Docker Compose)
 
-На хосте рядом со стеком должны лежать: `docker-compose.yml`, `Caddyfile`,
+На хосте рядом со стеком должны лежать: `docker-compose.yml`,
 `.env` (секреты) и файлы данных `config.json`, `users.json`, `wpad_.dat`.
 
 ```bash
@@ -42,8 +39,6 @@ docker compose pull
 docker compose up -d
 ```
 
-Сайт станет доступен по HTTPS на адресе из `SITE_ADDRESS`. Порт приложения
-наружу не публикуется — весь трафик идёт через Caddy (`:80`/`:443`).
 Деплой на виртуалку автоматизирован в `.gitea/workflows/deploy.yml` (сборка
 образа → push в реестр → `docker compose up -d` на хосте по SSH).
 
@@ -53,8 +48,7 @@ docker compose up -d
 | --- | --- |
 | `SECRET_KEY` | подпись cookie-сессий (обязателен в проде) |
 | `REDIS_URL` | адрес Redis, напр. `redis://redis:6379/0`; без него — cookie-сессии (только для отладки) |
-| `SITE_ADDRESS` | адрес для Caddy: домен → Let's Encrypt, `https://IP` → внутренний CA |
-| `COOKIE_SECURE` | `true` (по умолч.) — cookie только по HTTPS; `false` для локального http |
+| `COOKIE_SECURE` | `false` для локального http |
 | `INITIAL_ADMIN` / `INITIAL_ADMIN_PASSWORD` | первый пользователь при пустом `users.json` |
 | `CONFIG_FILE` / `USERS_FILE` | пути к конфигу и хранилищу пользователей |
 

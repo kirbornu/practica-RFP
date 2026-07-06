@@ -29,7 +29,7 @@ jobs:
 
       - name: Copy Stack Files
         run: |
-          scp docker-compose.yml Caddyfile deployuser@192.0.2.20:/opt/prct-site/
+          scp docker-compose.yml deployuser@192.0.2.20:/opt/prct-site/
 
       - name: Deploy Stack
         run: |

@@ -14,10 +14,6 @@ import redis
 
 app = Flask(__name__)
 
-# Приложение работает за обратным прокси (Caddy), который терминирует HTTPS.
-# ProxyFix заставляет Flask доверять заголовкам X-Forwarded-* от Caddy, чтобы
-# request.scheme был "https", а не "http" — иначе Secure-cookie и внешние
-# ссылки формируются неправильно.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

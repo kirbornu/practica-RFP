@@ -1,8 +1,7 @@
-# Прод-стек: приложение (gunicorn) + Redis (сессии) + Caddy (HTTPS-прокси).
+# Прод-стек: приложение (gunicorn) + Redis (сессии).
 #
 # На хосте рядом с этим файлом должны лежать:
 #   .env              — секреты (SECRET_KEY, SITE_ADDRESS, первый админ)
-#   Caddyfile         — конфиг Caddy
 #   config.json, users.json, wpad_.dat — данные приложения (bind-mount)
 #
 # Запуск:  docker compose pull && docker compose up -d
@@ -29,7 +28,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    # Наружу порт не публикуем — доступ только через Caddy.
     ports:
       - "8080:5000"
 
