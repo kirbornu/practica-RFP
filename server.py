@@ -58,8 +58,27 @@ else:
     print("ВНИМАНИЕ: REDIS_URL не задан — используются клиентские cookie-сессии. "
           "Для прода задайте REDIS_URL (redis://redis:6379/0).")
 
-# Эндпоинты, доступные без входа.
+# Эндпоинты, доступные без входа (на приватном порту — до авторизации).
 PUBLIC_ENDPOINTS = {"login_page", "login", "static"}
+
+# --- Асимметрия по портам ---
+# Приложение слушает несколько портов (см. gunicorn.conf.py -> bind).
+# «Публичные» порты работают без авторизации и показывают только тетрис:
+# редактор и все /api/* там недоступны. Различаем режим по РЕАЛЬНОМУ порту
+# сокета (SERVER_PORT из WSGI-environ) — его, в отличие от заголовка Host,
+# клиент подделать не может (важно: ProxyFix перезаписывает Host, но не порт).
+PUBLIC_PORTS = set(
+    p.strip() for p in os.environ.get("PUBLIC_PORTS", "5001").split(",") if p.strip()
+)
+
+# Что разрешено на публичном порту. Всё остальное (в т.ч. /login, /editor,
+# /api/config|rules|proxies) отдаёт 404 — снаружи их как будто не существует.
+PUBLIC_ALLOWED_ENDPOINTS = {"home", "tetris", "whoami", "static"}
+
+
+def is_public_request():
+    """True, если запрос пришёл на «публичный» (безавторизационный) порт."""
+    return request.environ.get("SERVER_PORT") in PUBLIC_PORTS
 
 
 def load_users():
@@ -76,7 +95,16 @@ def save_users(users):
 
 
 @app.before_request
-def require_login():
+def guard():
+    # Публичный порт: авторизация не нужна, но доступен только белый список
+    # (домашняя страница в урезанном виде + тетрис). Всё прочее — 404, чтобы
+    # редактор и API снаружи вообще не проявлялись.
+    if is_public_request():
+        if request.endpoint in PUBLIC_ALLOWED_ENDPOINTS:
+            return
+        return jsonify({"error": "Не найдено"}), 404
+
+    # Приватный порт: обычная авторизация.
     if request.endpoint in PUBLIC_ENDPOINTS:
         return
     if session.get("user"):
@@ -293,7 +321,11 @@ def logout():
 
 @app.route("/api/me", methods=["GET"])
 def whoami():
-    return jsonify({"user": session.get("user")})
+    # На публичном порту пользователя нет и быть не может; отдаём флаг режима,
+    # чтобы фронт скрыл редактор и элементы авторизации.
+    if is_public_request():
+        return jsonify({"user": None, "public": True})
+    return jsonify({"user": session.get("user"), "public": False})
 
 
 @app.route("/")
