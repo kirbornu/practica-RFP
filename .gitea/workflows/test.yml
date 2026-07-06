@@ -11,9 +11,13 @@ on:
 
 jobs:
   test:
-    # Метка нашей Debian-ВМ, зарегистрированной как Gitea Actions runner.
-    # См. TESTING.md → «Настройка Debian-ВМ как раннера».
+    # Метка нашей Debian-ВМ, зарегистрированной как Gitea Actions runner
+    # с доступом к Docker. См. TESTING.md → «Настройка Debian-ВМ как раннера».
     runs-on: tests
+    # Джоб выполняется ВНУТРИ контейнера с готовым Python — на самой ВМ
+    # ставить python/pip не нужно (это обходит «externally-managed» Debian).
+    # Полный образ python:3.11 уже содержит git (нужен checkout) и pip.
+    container: python:3.11
     steps:
       - name: Клонировать код
         uses: actions/checkout@v4
