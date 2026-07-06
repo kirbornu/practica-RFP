@@ -64,12 +64,20 @@ pytest tests/test_smoke.py -v
 
 ## Настройка Debian-ВМ как Gitea Actions runner
 
+Джобы `test`/`smoke` выполняются **в контейнере** (`container: python:3.11` в
+workflow), поэтому на самой ВМ ставить Python/pip не нужно — достаточно Docker.
+Это специально: свежий Debian с «externally-managed environment» (PEP 668) не даёт
+системному `pip` ставить пакеты глобально, а контейнер эту проблему обходит.
+
 На новой Debian-виртуалке (метка `tests`):
 
 ```bash
-# 1. Базовые пакеты: git, python, pip нужны шагам джоба
+# 1. Установить Docker (в нём будут крутиться контейнеры джобов)
 sudo apt update
-sudo apt install -y git python3 python3-pip python3-venv curl
+sudo apt install -y docker.io curl
+sudo systemctl enable --now docker
+# пользователя, под которым работает раннер, добавить в группу docker:
+sudo usermod -aG docker $USER      # затем перелогиниться
 
 # 2. Скачать act_runner (агент Gitea Actions); версию подставить актуальную
 curl -L -o act_runner \
@@ -80,26 +88,27 @@ chmod +x act_runner
 #    админка → Site Administration → Actions → Runners → Create new Runner,
 #    ЛИБО на уровне репозитория: Settings → Actions → Runners.
 
-# 4. Зарегистрировать раннер с меткой tests, исполняющей джобы прямо на хосте
-#    (host — без Docker; поэтому git/python и ставим системно на шаге 1):
+# 4. Зарегистрировать раннер с меткой tests в режиме DOCKER (не host!):
+#    executor docker обязателен, иначе ключ container: в workflow не сработает.
 ./act_runner register \
   --no-interactive \
   --instance http://192.0.2.41:3000 \
   --token <ТОКЕН_ИЗ_ШАГА_3> \
   --name debian-tests \
-  --labels tests:host
+  --labels tests:docker://python:3.11
 
 # 5. Запустить как демон (для постоянной работы оформить в systemd-сервис)
 ./act_runner daemon
 ```
 
 После регистрации раннер появится в Gitea со статусом *Idle* и меткой `tests`,
-и джобы с `runs-on: tests` поедут на него.
+и джобы с `runs-on: tests` поедут на него, выполняясь внутри `python:3.11`.
 
-> Метка `tests:host` означает «выполнять шаги напрямую на этой машине». Поэтому
-> `git` и `python3`/`pip` должны быть установлены системно (шаг 1). Альтернатива —
-> `tests:docker://python:3.11` (каждый джоб в контейнере), но тогда раннеру нужен
-> Docker; для выделенной тест-ВМ вариант `host` проще и прозрачнее.
+> Метка вида `tests:docker://python:3.11` включает docker-executor и задаёт
+> образ по умолчанию. Node для JS-экшенов (`actions/checkout`) act_runner
+> подкидывает в контейнер сам, git и pip уже есть в полном образе `python:3.11`.
+> ВМ должна иметь доступ к реестру образов (Docker Hub или зеркалу), чтобы
+> стянуть `python:3.11`.
 
 ## Как добавить свой тест
 
