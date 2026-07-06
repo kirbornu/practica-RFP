@@ -8,8 +8,17 @@ from flask import (
     session, redirect, url_for,
 )
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
+from flask_session import Session
+import redis
 
 app = Flask(__name__)
+
+# Приложение работает за обратным прокси (Caddy), который терминирует HTTPS.
+# ProxyFix заставляет Flask доверять заголовкам X-Forwarded-* от Caddy, чтобы
+# request.scheme был "https", а не "http" — иначе Secure-cookie и внешние
+# ссылки формируются неправильно.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
@@ -31,6 +40,27 @@ app.config.update(
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "true").lower() != "false",
 )
+
+# --- Хранилище сессий ---
+# В проде сессии храним на сервере в Redis: у клиента в cookie лежит только
+# подписанный идентификатор сессии, а сами данные (кто вошёл) — в Redis.
+# Это даёт серверный logout, единое хранилище на все воркеры gunicorn и
+# отсутствие приватных данных в самой cookie.
+# Если REDIS_URL не задан — откатываемся на обычные подписанные cookie-сессии
+# Flask (годится только для локальной отладки).
+REDIS_URL = os.environ.get("REDIS_URL")
+if REDIS_URL:
+    app.config.update(
+        SESSION_TYPE="redis",
+        SESSION_REDIS=redis.from_url(REDIS_URL),
+        SESSION_PERMANENT=False,
+        SESSION_USE_SIGNER=True,
+        SESSION_KEY_PREFIX="prct:session:",
+    )
+    Session(app)
+else:
+    print("ВНИМАНИЕ: REDIS_URL не задан — используются клиентские cookie-сессии. "
+          "Для прода задайте REDIS_URL (redis://redis:6379/0).")
 
 # Эндпоинты, доступные без входа.
 PUBLIC_ENDPOINTS = {"login_page", "login", "static"}

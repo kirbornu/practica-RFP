@@ -1,0 +1,20 @@
+# Caddy — обратный прокси перед приложением, терминирует HTTPS.
+#
+# SITE_ADDRESS задаётся через окружение (см. .env):
+#   * публичный домен  (example.com)      → Caddy сам получит сертификат
+#                                            Let's Encrypt и продлит его;
+#   * внутренний адрес (https://192.0.2.20) → Caddy выпустит сертификат
+#                                            своим внутренним CA (tls internal).
+{$SITE_ADDRESS:https://192.0.2.20} {
+	encode gzip
+
+	# Внутренний самоподписанный CA. Для публичного домена эту строку убрать —
+	# тогда включится автоматический Let's Encrypt.
+	tls internal
+
+	reverse_proxy app:5000
+
+	log {
+		output stdout
+	}
+}
