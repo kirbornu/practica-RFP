@@ -12,6 +12,5 @@ jobs:
         run: |
           ssh deployuser@192.0.2.20 "
             wget -O /opt/prct-site/config.json http://192.0.2.41:3000/deployuser/app/raw/branch/master/volume/config.json &&
-            wget -O /opt/prct-site/wpad_.dat http://192.0.2.41:3000/deployuser/app/raw/branch/master/volume/wpad_.dat &&
             wget -O /opt/prct-site/users.json http://192.0.2.41:3000/deployuser/app/raw/branch/master/volume/users.json
           "
