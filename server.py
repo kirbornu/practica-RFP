@@ -149,6 +149,24 @@ def is_banned(ip):
         return bool(rec and rec.get("until", 0) > time.time())
 
 
+def ban_ip(ip):
+    """Немедленно блокирует IP на BAN_TIME секунд, без накопления попыток.
+
+    Используется как порогом fail2ban (после серии промахов), так и honeytoken'ами
+    (сразу, с первой же попытки под логином-приманкой).
+    """
+    if not ip:
+        return
+    if _ban_redis is not None:
+        _ban_redis.set(_ban_key(ip), "1", ex=BAN_TIME)
+        _ban_redis.delete(_attempts_key(ip))
+        return
+    with _ban_lock:
+        rec = _ban_mem.setdefault(ip, {"fails": [], "until": 0})
+        rec["until"] = time.time() + BAN_TIME
+        rec["fails"] = []
+
+
 def register_login_failure(ip):
     """Учитывает неудачную попытку входа; при превышении порога — банит IP."""
     if not ip:
@@ -159,8 +177,7 @@ def register_login_failure(ip):
             # Первый промах в серии — заводим окно, внутри которого копятся попытки.
             _ban_redis.expire(_attempts_key(ip), BAN_WINDOW)
         if n >= BAN_MAX_ATTEMPTS:
-            _ban_redis.set(_ban_key(ip), "1", ex=BAN_TIME)
-            _ban_redis.delete(_attempts_key(ip))
+            ban_ip(ip)
         return
     with _ban_lock:
         now = time.time()
@@ -181,6 +198,44 @@ def reset_login_failures(ip):
         return
     with _ban_lock:
         _ban_mem.pop(ip, None)
+
+
+# --- honeytokens: логины-приманки ---
+# В config["honeytokens"] лежит список «заманчивых» логинов (admin, root,
+# backup, …), которых нет у настоящих пользователей. Легитимный пользователь
+# их не знает и не вводит, поэтому любая попытка входа под таким логином —
+# явный признак вторжения (сканер/подбор). В отличие от fail2ban, который ждёт
+# порога промахов, honeytoken банит IP сразу, с первой попытки, и пишет тревогу
+# в лог. Ответ клиенту — тот же обезличенный 401, чтобы атакующий не отличил
+# приманку от обычной ошибки логина.
+
+def load_honeytokens():
+    """Множество логинов-приманок из config["honeytokens"] (в нижнем регистре).
+
+    Сравнение делаем без учёта регистра, поэтому нормализуем к lower: приманка
+    `admin` ловит и `Admin`, и `ADMIN`. Пустые записи отбрасываем.
+    """
+    tokens = load_config().get("honeytokens", [])
+    return {str(t).strip().lower() for t in tokens if str(t).strip()}
+
+
+def is_honeytoken(username):
+    """True, если username — логин-приманка и при этом не настоящий пользователь.
+
+    Совпадения с реальными логинами игнорируем: если приманкой по ошибке назвали
+    существующий аккаунт, честного пользователя нельзя из-за этого блокировать —
+    в таком случае вход обрабатывается обычным путём.
+    """
+    if not username:
+        return False
+    tokens = load_honeytokens()
+    if not tokens:
+        return False
+    name = username.lower()
+    if name not in tokens:
+        return False
+    real_users = {u.lower() for u in load_users()}
+    return name not in real_users
 
 
 @app.before_request
@@ -438,11 +493,24 @@ def login():
     data = request.get_json(silent=True) or {}
     username = data.get("username", "").strip()
     password = data.get("password", "")
+    ip = request.remote_addr
+
+    # honeytoken: вход под логином-приманкой — признак вторжения. Баним IP сразу
+    # (не дожидаясь порога fail2ban) и пишем тревогу в лог. Пароль не проверяем —
+    # такого аккаунта не существует. Ответ обезличенный, как при обычной ошибке.
+    if is_honeytoken(username):
+        ban_ip(ip)
+        app.logger.warning(
+            "HONEYTOKEN: попытка входа под логином-приманкой %r с IP %s — IP заблокирован",
+            username, ip,
+        )
+        return jsonify({"error": "Неверный логин или пароль"}), 401
+
     pw_hash = load_users().get(username)
     if not pw_hash or not check_password_hash(pw_hash, password):
-        register_login_failure(request.remote_addr)
+        register_login_failure(ip)
         return jsonify({"error": "Неверный логин или пароль"}), 401
-    reset_login_failures(request.remote_addr)
+    reset_login_failures(ip)
     session["user"] = username
     return jsonify({"ok": True, "user": username})
 
