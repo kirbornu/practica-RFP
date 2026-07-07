@@ -1,3 +1,4 @@
+import ipaddress
 import json
 import os
 import re
@@ -80,6 +81,50 @@ PUBLIC_ALLOWED_ENDPOINTS = {"home", "static"}
 def is_public_request():
     """True, если запрос пришёл на «публичный» (безавторизационный) порт."""
     return request.environ.get("SERVER_PORT") in PUBLIC_PORTS
+
+
+def parse_allowed_networks(allowed_ips):
+    """Преобразует список строк config["allowed_ips"] в объекты ip_network.
+
+    Поддерживаются одиночные адреса и подсети (CIDR), IPv4 и IPv6.
+    Некорректные записи пропускаются с предупреждением, а не роняют запрос.
+    """
+    networks = []
+    for item in allowed_ips or []:
+        try:
+            networks.append(ipaddress.ip_network(str(item).strip(), strict=False))
+        except ValueError:
+            print(f"ВНИМАНИЕ: некорректная запись в allowed_ips, пропущена: {item!r}")
+    return networks
+
+
+def is_ip_allowed(remote_addr, networks):
+    """True, если remote_addr входит хотя бы в одну сеть из networks.
+
+    Пустой networks означает «фильтр выключен» → разрешаем всех.
+    """
+    if not networks:
+        return True
+    if not remote_addr:
+        return False
+    try:
+        ip = ipaddress.ip_address(remote_addr)
+    except ValueError:
+        return False
+    return any(ip in net for net in networks)
+
+
+@app.before_request
+def enforce_ip_access():
+    # Первый рубеж: пускаем только с адресов из config["allowed_ips"]. Проверка
+    # идёт до разбора публичный/приватный порт и до авторизации, поэтому
+    # одинаково закрывает и редактор, и тетрис, и форму входа. Пустой/отсутству-
+    # ющий список = фильтр выключен (allow-all), чтобы опечатка в конфиге не
+    # отрезала доступ целиком. request.remote_addr — реальный IP клиента:
+    # ProxyFix уже подставил его из X-Forwarded-For.
+    networks = parse_allowed_networks(load_config().get("allowed_ips", []))
+    if not is_ip_allowed(request.remote_addr, networks):
+        return jsonify({"error": "Доступ запрещён"}), 403
 
 
 def load_users():
