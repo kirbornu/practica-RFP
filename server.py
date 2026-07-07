@@ -4,6 +4,8 @@ import os
 import re
 import secrets
 import sys
+import threading
+import time
 from flask import (
     Flask, request, jsonify, send_from_directory,
     session, redirect, url_for,
@@ -58,6 +60,20 @@ if REDIS_URL:
 else:
     print("ВНИМАНИЕ: REDIS_URL не задан — используются клиентские cookie-сессии. "
           "Для прода задайте REDIS_URL (redis://redis:6379/0).")
+
+# --- fail2ban: временная блокировка IP после серии неудачных входов ---
+# Считаем неудачные попытки логина по IP: после BAN_MAX_ATTEMPTS попыток за окно
+# BAN_WINDOW секунд адрес блокируется на BAN_TIME секунд (в ответ 429). Состояние
+# держим в Redis — оно общее на все воркеры gunicorn. Без Redis откатываемся на
+# in-memory (годится только для локального однопроцессного запуска: между
+# воркерами счётчики не делятся).
+BAN_MAX_ATTEMPTS = int(os.environ.get("BAN_MAX_ATTEMPTS", "5"))
+BAN_WINDOW = int(os.environ.get("BAN_WINDOW", "300"))
+BAN_TIME = int(os.environ.get("BAN_TIME", "900"))
+
+_ban_redis = app.config.get("SESSION_REDIS")  # тот же клиент, что и для сессий
+_ban_mem = {}          # {ip: {"fails": [ts, ...], "until": ts}} — фолбэк без Redis
+_ban_lock = threading.Lock()
 
 # Эндпоинты, доступные без входа (на приватном порту — до авторизации).
 PUBLIC_ENDPOINTS = {"login_page", "login", "static"}
@@ -114,6 +130,59 @@ def is_ip_allowed(remote_addr, networks):
     return any(ip in net for net in networks)
 
 
+def _ban_key(ip):
+    return f"prct:fail2ban:ban:{ip}"
+
+
+def _attempts_key(ip):
+    return f"prct:fail2ban:att:{ip}"
+
+
+def is_banned(ip):
+    """True, если IP сейчас заблокирован после серии неудачных входов."""
+    if not ip:
+        return False
+    if _ban_redis is not None:
+        return bool(_ban_redis.exists(_ban_key(ip)))
+    with _ban_lock:
+        rec = _ban_mem.get(ip)
+        return bool(rec and rec.get("until", 0) > time.time())
+
+
+def register_login_failure(ip):
+    """Учитывает неудачную попытку входа; при превышении порога — банит IP."""
+    if not ip:
+        return
+    if _ban_redis is not None:
+        n = _ban_redis.incr(_attempts_key(ip))
+        if n == 1:
+            # Первый промах в серии — заводим окно, внутри которого копятся попытки.
+            _ban_redis.expire(_attempts_key(ip), BAN_WINDOW)
+        if n >= BAN_MAX_ATTEMPTS:
+            _ban_redis.set(_ban_key(ip), "1", ex=BAN_TIME)
+            _ban_redis.delete(_attempts_key(ip))
+        return
+    with _ban_lock:
+        now = time.time()
+        rec = _ban_mem.setdefault(ip, {"fails": [], "until": 0})
+        rec["fails"] = [t for t in rec["fails"] if t > now - BAN_WINDOW]
+        rec["fails"].append(now)
+        if len(rec["fails"]) >= BAN_MAX_ATTEMPTS:
+            rec["until"] = now + BAN_TIME
+            rec["fails"] = []
+
+
+def reset_login_failures(ip):
+    """Сбрасывает счётчик неудач после успешного входа."""
+    if not ip:
+        return
+    if _ban_redis is not None:
+        _ban_redis.delete(_attempts_key(ip))
+        return
+    with _ban_lock:
+        _ban_mem.pop(ip, None)
+
+
 @app.before_request
 def enforce_ip_access():
     # Access-list действует только на приватных портах (редактор + API).
@@ -129,6 +198,19 @@ def enforce_ip_access():
     networks = parse_allowed_networks(load_config().get("allowed_ips", []))
     if not is_ip_allowed(request.remote_addr, networks):
         return jsonify({"error": "Доступ запрещён"}), 403
+
+
+@app.before_request
+def enforce_ban():
+    # fail2ban — тоже только приватные порты (там живёт логин). Публичный тетрис
+    # не трогаем, как и access-list. Забаненный IP получает 429 ещё до формы
+    # входа, так что подобрать пароль перебором нельзя.
+    if is_public_request():
+        return
+    if is_banned(request.remote_addr):
+        return jsonify({
+            "error": "Слишком много неудачных попыток входа. Попробуйте позже."
+        }), 429
 
 
 def load_users():
@@ -358,7 +440,9 @@ def login():
     password = data.get("password", "")
     pw_hash = load_users().get(username)
     if not pw_hash or not check_password_hash(pw_hash, password):
+        register_login_failure(request.remote_addr)
         return jsonify({"error": "Неверный логин или пароль"}), 401
+    reset_login_failures(request.remote_addr)
     session["user"] = username
     return jsonify({"ok": True, "user": username})
 

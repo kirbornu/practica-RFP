@@ -46,6 +46,15 @@ def isolated_files(tmp_path, monkeypatch):
     return {"config": cfg, "users": users, "pac": pac}
 
 
+@pytest.fixture(autouse=True)
+def _clear_ban_state():
+    """fail2ban без Redis держит счётчики в общем модульном словаре — чистим его
+    до и после каждого теста, чтобы баны не протекали между тестами."""
+    server._ban_mem.clear()
+    yield
+    server._ban_mem.clear()
+
+
 @pytest.fixture
 def client(isolated_files):
     server.app.config.update(TESTING=True)
