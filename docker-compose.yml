@@ -1,7 +1,7 @@
 # Прод-стек: приложение (gunicorn) + Redis (сессии).
 #
 # На хосте рядом с этим файлом должны лежать:
-#   .env              — секреты (SECRET_KEY, SITE_ADDRESS, первый админ)
+#   .env              — секреты (SECRET_KEY, REDIS_PASSWORD, первый админ)
 #   config.json, users.json, wpad_.dat — данные приложения (bind-mount)
 #
 # Запуск:  docker compose pull && docker compose up -d
@@ -14,7 +14,8 @@ services:
       # Подпись cookie-сессий — обязателен, задаётся в .env.
       SECRET_KEY: ${SECRET_KEY}
       # Серверные сессии в Redis (сервис ниже, имя хоста = имя сервиса).
-      REDIS_URL: redis://redis:6379/0
+      # Пароль (REDIS_PASSWORD из .env) прокидываем в URL: redis://:ПАРОЛЬ@host.
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       CONFIG_FILE: /app/config.json
       USERS_FILE: /app/users.json
       COOKIE_SECURE: "false"
@@ -37,12 +38,22 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # Включаем персистентность, чтобы сессии переживали рестарт контейнера.
-    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    # Персистентность (сессии переживают рестарт) + пароль (--requirepass).
+    # REDIS_PASSWORD подставляется из .env на этапе парсинга compose.
+    command:
+      - "redis-server"
+      - "--save"
+      - "60"
+      - "1"
+      - "--appendonly"
+      - "yes"
+      - "--requirepass"
+      - "${REDIS_PASSWORD}"
     volumes:
       - redis-data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # С паролем PING без аутентификации вернёт NOAUTH — передаём -a.
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
