@@ -1,14 +1,3 @@
-"""API-тесты (интеграционный слой пирамиды).
-
-Здесь мы бьём по HTTP-эндпоинтам Flask через test client. В отличие от
-юнит-тестов, тут проверяется вся цепочка: маршрутизация, before_request-guard
-(авторизация и порт-асимметрия), разбор JSON, коды ответов и запись в файлы.
-
-Фикстуры (client, auth_client, isolated_files) описаны в conftest.py.
-
-Запуск:  pytest tests/test_api.py -v
-"""
-
 import json
 
 from conftest import TEST_USER, TEST_PASSWORD

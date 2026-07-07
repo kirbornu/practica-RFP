@@ -1,15 +1,3 @@
-"""Юнит-тесты парсера PAC-файла из server.py.
-
-Это самый нижний слой пирамиды: мы проверяем ЧИСТЫЕ функции над текстом,
-без запуска сервера, без сети, без файлов. Такие тесты — самые быстрые и
-надёжные, поэтому их и пишут больше всего.
-
-Запуск из корня проекта:   pytest
-Запуск только этого файла:  pytest tests/test_pac_parser.py -v
-"""
-
-# Импортируем тестируемый модуль. Работает благодаря conftest.py в корне,
-# который добавил корень проекта в путь поиска модулей.
 import pytest
 import server
 
@@ -67,15 +55,6 @@ def test_parse_multiple_rules_in_order():
     domains = [r["domain"] for r in rules]
     assert domains == ["a.com", "b.com", "*//c.ru/*"]
 
-
-# --- УРОК 2: Параметризация --------------------------------------------------
-#
-# Часто одну и ту же логику надо проверить на многих входах. Копировать тест —
-# плохо. Вместо этого декоратор @pytest.mark.parametrize прогоняет ОДНУ тестовую
-# функцию много раз с разными аргументами. Каждый набор — отдельный тест в
-# отчёте (видно в выводе как [example.com-...]). Первый аргумент декоратора —
-# имена параметров через запятую, второй — список кортежей со значениями.
-
 @pytest.mark.parametrize("pac_text, expected_domain, expected_type", [
     # обычный PROXY
     ('if (shExpMatch(host, "a.com")) { return "PROXY 1.1.1.1:3128"; }', "a.com", "PROXY"),
@@ -94,19 +73,10 @@ def test_parse_various_rules(pac_text, expected_domain, expected_type):
 
 
 def test_parse_ignores_non_rule_ifs():
-    """Строки без return PROXY/DIRECT (например isInNet) — не правила."""
     content = 'if (isInNet(host, "10.0.0.0", "255.0.0.0")) {return "DIRECT";}'
-    # Здесь есть DIRECT — значит это ВАЛИДНОЕ direct-правило. Проверим,
-    # что оно распознаётся, а вот if без return ниже — игнорируется.
     content2 = 'if (host == "x") { doSomething(); }'
     assert server.parse_rules(content2) == []
 
-
-# --- УРОК 3: Round-trip (туда-обратно) --------------------------------------
-#
-# Мощный вид теста: применяем связку функций и проверяем, что итог согласован.
-# Здесь: вставили правило -> распарсили -> оно на месте. Это ловит рассогласование
-# между "писателем" (insert_*) и "читателем" (parse_rules).
 
 PAC_TEMPLATE = (
     "function FindProxyForURL(url, host)\n"
@@ -152,12 +122,7 @@ def test_remove_returns_false_when_not_found():
     )
     assert removed is False
     assert content == PAC_TEMPLATE  # текст не изменился
-
-
-# --- УРОК 4: Проверка защищённой секции //constants -------------------------
-#
-# Критичное для безопасности свойство: всё после //constants редактор НЕ трогает.
-# get_editable_section должна отделить редактируемую часть от защищённой.
+    
 
 def test_constants_section_is_protected():
     editable, protected = server.get_editable_section(PAC_TEMPLATE)
