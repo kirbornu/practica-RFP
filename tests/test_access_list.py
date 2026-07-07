@@ -74,13 +74,13 @@ def test_blocked_before_login(client, isolated_files):
     assert resp.status_code == 403
 
 
-def test_public_port_also_filtered(client, isolated_files):
-    """Публичный порт (тетрис) тоже закрыт для чужих IP: «подключаться» нельзя вообще."""
+def test_public_port_not_filtered(client, isolated_files):
+    """Публичный порт (тетрис) access-list НЕ трогает — открыт даже с чужого IP."""
     _set_allowed_ips(isolated_files, ["203.0.113.7"])
     resp = client.get(
         "/", environ_overrides={"REMOTE_ADDR": "10.0.0.1", "SERVER_PORT": "5001"}
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 
 def test_x_forwarded_for_is_honored(client, isolated_files):
