@@ -67,7 +67,8 @@ docker compose up -d
 | Переменная | Назначение |
 | --- | --- |
 | `SECRET_KEY` | подпись cookie-сессий (обязателен в проде) |
-| `REDIS_URL` | адрес Redis, напр. `redis://redis:6379/0`; без него — cookie-сессии (только для отладки) |
+| `REDIS_URL` | адрес Redis, напр. `redis://:ПАРОЛЬ@redis:6379/0`; без него — cookie-сессии (только для отладки) |
+| `REDIS_PASSWORD` | пароль Redis (`--requirepass`); подставляется в `REDIS_URL` и healthcheck в compose |
 | `COOKIE_SECURE` | `false` для локального http |
 | `INITIAL_ADMIN` / `INITIAL_ADMIN_PASSWORD` | первый пользователь при пустом `users.json` |
 | `CONFIG_FILE` / `USERS_FILE` | пути к конфигу и хранилищу пользователей |
