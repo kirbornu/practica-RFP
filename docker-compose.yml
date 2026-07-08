@@ -3,6 +3,7 @@
 # На хосте рядом с этим файлом должны лежать:
 #   .env              — секреты (SECRET_KEY, REDIS_PASSWORD, первый админ)
 #   config.json, users.json, wpad_.dat — данные приложения (bind-mount)
+#   redis.conf        — конфиг Redis с requirepass (bind-mount, chmod-защищён)
 #
 # Запуск:  docker compose pull && docker compose up -d
 
@@ -38,22 +39,18 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    # Персистентность (сессии переживают рестарт) + пароль (--requirepass).
-    # REDIS_PASSWORD подставляется из .env на этапе парсинга compose.
-    command:
-      - "redis-server"
-      - "--save"
-      - "60"
-      - "1"
-      - "--appendonly"
-      - "yes"
-      - "--requirepass"
-      - "${REDIS_PASSWORD}"
+    # Конфиг (персистентность + requirepass) вынесен в примонтированный файл,
+    # чтобы пароль НЕ попадал в аргументы процесса и docker inspect.
+    # Сам redis.conf лежит на хосте (см. ниже bind-mount) и в git не коммитится.
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
     volumes:
       - redis-data:/data
+      - /opt/prct-site/redis.conf:/usr/local/etc/redis/redis.conf:ro
     healthcheck:
-      # С паролем PING без аутентификации вернёт NOAUTH — передаём -a.
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      # PING без пароля вернёт NOAUTH — это тоже признак «Redis жив». Проверяем
+      # PONG или NOAUTH, чтобы НЕ передавать пароль в healthcheck (иначе он бы
+      # засветился в docker inspect).
+      test: ["CMD-SHELL", "redis-cli ping 2>&1 | grep -qE 'PONG|NOAUTH'"]
       interval: 5s
       timeout: 3s
       retries: 5
