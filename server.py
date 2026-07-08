@@ -6,10 +6,12 @@ import secrets
 import sys
 import threading
 import time
+from datetime import datetime, timedelta
 from flask import (
     Flask, request, jsonify, send_from_directory,
     session, redirect, url_for,
 )
+from markupsafe import escape
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.exceptions import NotFound
@@ -150,6 +152,28 @@ def is_banned(ip):
         return bool(rec and rec.get("until", 0) > time.time())
 
 
+def ban_expires_at(ip):
+    """Момент снятия бана как datetime с локальным часовым поясом, или None.
+
+    С Redis берём остаток TTL ключа бана, без Redis — поле until из in-memory
+    записи. Возвращаемый datetime «осознаёт» часовой пояс сервера (astimezone),
+    чтобы показать пользователю время снятия блокировки в человекочитаемом виде.
+    """
+    if not ip:
+        return None
+    if _ban_redis is not None:
+        ttl = _ban_redis.ttl(_ban_key(ip))
+        if ttl is None or ttl < 0:
+            return None
+        return datetime.now().astimezone() + timedelta(seconds=ttl)
+    with _ban_lock:
+        rec = _ban_mem.get(ip)
+        until = rec.get("until", 0) if rec else 0
+    if until <= 0:
+        return None
+    return datetime.fromtimestamp(until).astimezone()
+
+
 def ban_ip(ip):
     """Немедленно блокирует IP на BAN_TIME секунд, без накопления попыток.
 
@@ -248,6 +272,51 @@ def is_honeytoken_request():
     return False
 
 
+# --- Страница блокировки ---
+# Один общий шаблон ban.html на два повода отказа: access-list (IP вне
+# allowed_ips) и fail2ban (IP в prct:fail2ban:ban — как после серии промахов,
+# так и после honeytoken'а). Текст и HTTP-код различаются, вёрстка — общая.
+PUBLIC_PORT_LINK = os.environ.get("PUBLIC_PORT_LINK", "8090")
+
+
+def _public_port_link():
+    """Абсолютная ссылка на публичный порт (тетрис) на том же хосте."""
+    host = (request.host or "").split(":", 1)[0] or request.host
+    return f"{request.scheme}://{host}:{PUBLIC_PORT_LINK}/"
+
+
+def render_ban_page(variant, status):
+    """Отдаёт ban.html с текстом под конкретный повод блокировки.
+
+    variant="acl"     — IP не входит в allowed_ips (нет доступа к порту);
+    variant="fail2ban" — IP забанен (показываем время снятия блокировки).
+    IP-адрес и время подставляются в шаблон; HTTP-код сохраняем прежним
+    (403 для acl, 429 для fail2ban), чтобы не менять контракт для тестов/клиентов.
+    """
+    ip = request.remote_addr or ""
+    port_link = f'<a href="{escape(_public_port_link())}">портом {escape(PUBLIC_PORT_LINK)}</a>'
+    if variant == "fail2ban":
+        expires = ban_expires_at(ip)
+        when = expires.strftime("%d.%m.%Y %H:%M:%S %Z") if expires else "позже"
+        message = (
+            f"Доступ к этому был заблокирован для Вас. "
+            f"Блокировка закончится {escape(when)}. "
+            f"Можете воспользоваться {port_link} или обратитесь к системному "
+            f"администратору."
+        )
+    else:
+        message = (
+            f"Ваш IP-адрес не имеет доступа к этому порту. "
+            f"Можете воспользоваться {port_link} или обратитесь к системному "
+            f"администратору."
+        )
+    with open(os.path.join(BASE_DIR, "ban.html"), "r", encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace("__BAN_MESSAGE__", message)
+    html = html.replace("__BAN_IP__", str(escape(ip)))
+    return html, status
+
+
 @app.before_request
 def enforce_ip_access():
     # Access-list действует только на приватных портах (редактор + API).
@@ -262,7 +331,7 @@ def enforce_ip_access():
     # реальный IP клиента: ProxyFix уже подставил его из X-Forwarded-For.
     networks = parse_allowed_networks(load_config().get("allowed_ips", []))
     if not is_ip_allowed(request.remote_addr, networks):
-        return jsonify({"error": "Доступ запрещён"}), 403
+        return render_ban_page("acl", 403)
 
 
 @app.before_request
@@ -273,9 +342,7 @@ def enforce_ban():
     if is_public_request():
         return
     if is_banned(request.remote_addr):
-        return jsonify({
-            "error": "Слишком много неудачных попыток входа. Попробуйте позже."
-        }), 429
+        return render_ban_page("fail2ban", 429)
 
 
 @app.before_request
