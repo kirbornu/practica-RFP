@@ -1,96 +1,87 @@
 import json
 
 import server
-from conftest import TEST_USER, TEST_PASSWORD
 
 
-def _set_honeytokens(isolated_files, tokens):
-    """Дописывает список логинов-приманок в изолированный config.json."""
+def _set_honeytokens(isolated_files, paths):
+    """Дописывает список явных путей-ловушек в изолированный config.json."""
     cfg = isolated_files["config"]
     data = json.loads(cfg.read_text(encoding="utf-8"))
-    data["honeytokens"] = tokens
+    data["honeytokens"] = paths
     cfg.write_text(json.dumps(data), encoding="utf-8")
 
 
-def test_honeytoken_bans_immediately(client, isolated_files):
-    """Одной попытки под логином-приманкой хватает, чтобы забанить IP."""
-    _set_honeytokens(isolated_files, ["admin"])
+def test_nonexistent_api_trips_and_bans(client):
+    """Запрос к несуществующему /api/* — ловушка: 404 и мгновенный бан IP."""
     ip = "203.0.113.70"
-    resp = client.post(
-        "/api/login",
-        json={"username": "admin", "password": "whatever"},
-        environ_overrides={"REMOTE_ADDR": ip},
-    )
-    # Обезличенный 401 — атакующий не отличит приманку от обычной ошибки.
-    assert resp.status_code == 401
-    # А IP уже забанен — следующий запрос ловит 429 ещё до формы входа.
+    resp = client.get("/api/users", environ_overrides={"REMOTE_ADDR": ip})
+    # Обезличенный 404 — ловушку не отличить от обычного «не найдено».
+    assert resp.status_code == 404
+    # IP уже забанен: следующий запрос ловит 429 ещё до формы входа.
     after = client.get("/", environ_overrides={"REMOTE_ADDR": ip})
     assert after.status_code == 429
 
 
-def test_honeytoken_match_is_case_insensitive(client, isolated_files):
-    """Приманка `admin` ловит и `ADMIN`, и `Admin`."""
-    _set_honeytokens(isolated_files, ["admin"])
+def test_explicit_honeytoken_path_trips(client, isolated_files):
+    """Явный путь-ловушка из конфига (напр. /wp-login.php) банит IP."""
+    _set_honeytokens(isolated_files, ["/wp-login.php", "/.env"])
     ip = "203.0.113.71"
-    resp = client.post(
-        "/api/login",
-        json={"username": "ADMIN", "password": "x"},
-        environ_overrides={"REMOTE_ADDR": ip},
-    )
-    assert resp.status_code == 401
+    resp = client.get("/wp-login.php", environ_overrides={"REMOTE_ADDR": ip})
+    assert resp.status_code == 404
     after = client.get("/", environ_overrides={"REMOTE_ADDR": ip})
     assert after.status_code == 429
 
 
-def test_real_login_still_works_with_honeytokens_set(client, isolated_files):
-    """Наличие приманок не мешает нормальному входу настоящего пользователя."""
-    _set_honeytokens(isolated_files, ["admin", "root", "backup"])
+def test_honeytoken_path_is_case_insensitive(client, isolated_files):
+    """Путь-ловушка ловит и /Admin, и /admin."""
+    _set_honeytokens(isolated_files, ["/admin"])
     ip = "203.0.113.72"
-    resp = client.post(
-        "/api/login",
-        json={"username": TEST_USER, "password": TEST_PASSWORD},
-        environ_overrides={"REMOTE_ADDR": ip},
-    )
-    assert resp.status_code == 200
+    client.get("/ADMIN", environ_overrides={"REMOTE_ADDR": ip})
     after = client.get("/", environ_overrides={"REMOTE_ADDR": ip})
-    assert after.status_code != 429
+    assert after.status_code == 429
 
 
-def test_honeytoken_colliding_with_real_user_is_ignored(client, isolated_files):
-    """Если приманкой по ошибке назвали реального пользователя — вход не ломается."""
-    _set_honeytokens(isolated_files, [TEST_USER])
+def test_real_api_endpoint_not_trapped(auth_client):
+    """Настоящий API-эндпоинт работает как обычно — ловушка не срабатывает."""
     ip = "203.0.113.73"
-    resp = client.post(
-        "/api/login",
-        json={"username": TEST_USER, "password": TEST_PASSWORD},
-        environ_overrides={"REMOTE_ADDR": ip},
-    )
+    resp = auth_client.get("/api/config", environ_overrides={"REMOTE_ADDR": ip})
     assert resp.status_code == 200
-    after = client.get("/", environ_overrides={"REMOTE_ADDR": ip})
+    after = auth_client.get("/", environ_overrides={"REMOTE_ADDR": ip})
     assert after.status_code != 429
 
 
-def test_no_honeytokens_means_normal_behaviour(client, isolated_files):
-    """Пустой/отсутствующий список приманок — обычная логика логина без бана."""
+def test_wrong_method_on_real_path_not_trapped(auth_client):
+    """Метод-mismatch (405) на реальном пути ловушкой не считается."""
     ip = "203.0.113.74"
-    resp = client.post(
-        "/api/login",
-        json={"username": "admin", "password": "x"},
-        environ_overrides={"REMOTE_ADDR": ip},
-    )
-    assert resp.status_code == 401
-    # Один промах по несуществующему логину не должен банить.
+    # /api/config существует только для GET/POST — PUT даёт 405, но это не ловушка.
+    resp = auth_client.put("/api/config", environ_overrides={"REMOTE_ADDR": ip})
+    assert resp.status_code == 405
+    after = auth_client.get("/", environ_overrides={"REMOTE_ADDR": ip})
+    assert after.status_code != 429
+
+
+def test_non_api_404_does_not_trap(client):
+    """Обычный не-/api 404 (напр. /favicon.ico от браузера) не банит."""
+    ip = "203.0.113.75"
+    client.get("/favicon.ico", environ_overrides={"REMOTE_ADDR": ip})
     after = client.get("/", environ_overrides={"REMOTE_ADDR": ip})
     assert after.status_code != 429
 
 
-def test_honeytoken_ban_is_per_ip(client, isolated_files):
-    """Бан по приманке не затрагивает другой IP."""
-    _set_honeytokens(isolated_files, ["root"])
-    client.post(
-        "/api/login",
-        json={"username": "root", "password": "x"},
-        environ_overrides={"REMOTE_ADDR": "203.0.113.75"},
+def test_public_port_has_no_honeytokens(client):
+    """Публичный порт (тетрис) ловушки не трогают — бана нет."""
+    ip = "203.0.113.76"
+    client.get(
+        "/api/users",
+        environ_overrides={"REMOTE_ADDR": ip, "SERVER_PORT": "5001"},
     )
-    resp = client.get("/", environ_overrides={"REMOTE_ADDR": "203.0.113.76"})
+    # Тот же IP на приватном порту не забанен.
+    after = client.get("/", environ_overrides={"REMOTE_ADDR": ip})
+    assert after.status_code != 429
+
+
+def test_honeytoken_ban_is_per_ip(client):
+    """Бан по ловушке не затрагивает другой IP."""
+    client.get("/api/secret", environ_overrides={"REMOTE_ADDR": "203.0.113.77"})
+    resp = client.get("/", environ_overrides={"REMOTE_ADDR": "203.0.113.78"})
     assert resp.status_code == 302
