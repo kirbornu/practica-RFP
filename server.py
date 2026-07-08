@@ -12,6 +12,7 @@ from flask import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.exceptions import NotFound
 from flask_session import Session
 import redis
 
@@ -149,6 +150,24 @@ def is_banned(ip):
         return bool(rec and rec.get("until", 0) > time.time())
 
 
+def ban_ip(ip):
+    """Немедленно блокирует IP на BAN_TIME секунд, без накопления попыток.
+
+    Используется как порогом fail2ban (после серии промахов), так и honeytoken'ами
+    (сразу, с первой же попытки под логином-приманкой).
+    """
+    if not ip:
+        return
+    if _ban_redis is not None:
+        _ban_redis.set(_ban_key(ip), "1", ex=BAN_TIME)
+        _ban_redis.delete(_attempts_key(ip))
+        return
+    with _ban_lock:
+        rec = _ban_mem.setdefault(ip, {"fails": [], "until": 0})
+        rec["until"] = time.time() + BAN_TIME
+        rec["fails"] = []
+
+
 def register_login_failure(ip):
     """Учитывает неудачную попытку входа; при превышении порога — банит IP."""
     if not ip:
@@ -159,8 +178,7 @@ def register_login_failure(ip):
             # Первый промах в серии — заводим окно, внутри которого копятся попытки.
             _ban_redis.expire(_attempts_key(ip), BAN_WINDOW)
         if n >= BAN_MAX_ATTEMPTS:
-            _ban_redis.set(_ban_key(ip), "1", ex=BAN_TIME)
-            _ban_redis.delete(_attempts_key(ip))
+            ban_ip(ip)
         return
     with _ban_lock:
         now = time.time()
@@ -181,6 +199,53 @@ def reset_login_failures(ip):
         return
     with _ban_lock:
         _ban_mem.pop(ip, None)
+
+
+# --- honeytokens: ловушки на несуществующие эндпоинты ---
+# Идея: легитимный клиент (редактор) ходит только по известному набору
+# маршрутов. Запрос к НЕсуществующему API-эндпоинту (например /api/users,
+# /api/admin, /api/v1/...) — явный признак сканирования/подбора: реального
+# маршрута нет, а путь ведёт в /api/. Такой IP банится сразу (тем же механизмом,
+# что и fail2ban), а в лог пишется тревога. Дополнительно можно перечислить
+# явные пути-ловушки в config["honeytokens"] (напр. /wp-login.php, /.env,
+# /.git/config) — популярная приманка для автосканеров. Ответ клиенту — обычный
+# 404, чтобы ловушку нельзя было отличить от заурядного «не найдено».
+
+# Префикс, под которым живёт API: любой несуществующий путь под ним — ловушка.
+API_PREFIX = "/api/"
+
+
+def load_honeytoken_paths():
+    """Множество явных путей-ловушек из config["honeytokens"].
+
+    Сравнение по точному пути (с ведущим слэшем), без учёта регистра — сканеры
+    пробуют и /Admin, и /admin. Пустые записи отбрасываем.
+    """
+    paths = load_config().get("honeytokens", [])
+    result = set()
+    for p in paths:
+        p = str(p).strip()
+        if p:
+            norm = ("/" + p.strip("/")).lower() or "/"
+            result.add(norm)
+    return result
+
+
+def is_honeytoken_request():
+    """True, если текущий запрос попал в ловушку honeytoken.
+
+    Триггерит на: (1) явный путь-ловушку из конфига; (2) несуществующий
+    эндпоинт под /api/ — реального маршрута нет (routing → 404 NotFound), а путь
+    ведёт в API. Метод-mismatch (405) на реальном пути ловушкой не считаем.
+    """
+    path = (request.path or "").rstrip("/") or "/"
+    if path.lower() in load_honeytoken_paths():
+        return True
+    if request.path.startswith(API_PREFIX) and isinstance(
+        request.routing_exception, NotFound
+    ):
+        return True
+    return False
 
 
 @app.before_request
@@ -211,6 +276,24 @@ def enforce_ban():
         return jsonify({
             "error": "Слишком много неудачных попыток входа. Попробуйте позже."
         }), 429
+
+
+@app.before_request
+def enforce_honeytokens():
+    # honeytokens — тоже только приватные порты (как ACL и fail2ban). Публичный
+    # тетрис не трогаем: там нет API и ловушек. Проверяем до guard, чтобы запрос
+    # к несуществующему API забанил сканера, а не просто получил 401/404.
+    if is_public_request():
+        return
+    if is_honeytoken_request():
+        ip = request.remote_addr
+        ban_ip(ip)
+        app.logger.warning(
+            "HONEYTOKEN: обращение к ловушке %s %s с IP %s — IP заблокирован",
+            request.method, request.path, ip,
+        )
+        # Обезличенный 404: ловушку нельзя отличить от обычного «не найдено».
+        return jsonify({"error": "Не найдено"}), 404
 
 
 def load_users():
@@ -438,11 +521,12 @@ def login():
     data = request.get_json(silent=True) or {}
     username = data.get("username", "").strip()
     password = data.get("password", "")
+    ip = request.remote_addr
     pw_hash = load_users().get(username)
     if not pw_hash or not check_password_hash(pw_hash, password):
-        register_login_failure(request.remote_addr)
+        register_login_failure(ip)
         return jsonify({"error": "Неверный логин или пароль"}), 401
-    reset_login_failures(request.remote_addr)
+    reset_login_failures(ip)
     session["user"] = username
     return jsonify({"ok": True, "user": username})
 
